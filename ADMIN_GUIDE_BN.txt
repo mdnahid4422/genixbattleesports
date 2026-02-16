@@ -1,0 +1,90 @@
+============================================================
+           GENIX BATTLE - GOOGLE SHEET & DRIVE SYNC GUIDE
+============================================================
+
+রেজিস্ট্রেশন "Successful" দেখাচ্ছে কিন্তু শিটে ডাটা আসছে না?
+এর সমাধান নিচে দেওয়া হলো:
+
+১. শক্তিশালী গুগল স্ক্রিপ্ট কোড (এটি কপি করে আগেরটি মুছে দিন):
+-------------------------------------------------------
+এই কোডটি এমনভাবে তৈরি যাতে লোগো সেভ হতে সমস্যা হলেও আপনার টিমের ডাটা শিটে ১০০% জমা হবে।
+
+```javascript
+function doPost(e) {
+  try {
+    var jsonString = e.postData.getDataAsString();
+    var data = JSON.parse(jsonString);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    
+    // ১. শিট খুঁজে বের করা বা তৈরি করা
+    var sheet = ss.getSheetByName("Registrations");
+    if (!sheet) {
+      sheet = ss.insertSheet("Registrations");
+      sheet.appendRow([
+        "Timestamp", "Team Name", "Email", "WhatsApp", "Captain Full Name", 
+        "Logo Link", "P1 IGN", "P1 UID", "P2 IGN", "P2 UID", 
+        "P3 IGN", "P3 UID", "P4 IGN", "P4 UID", "P5 IGN", "P5 UID"
+      ]);
+    }
+    
+    // ২. লোগো সেভ করার চেষ্টা (Folder ID ভুল হলে এটি স্কিপ হবে)
+    var logoUrl = "No Logo Uploaded";
+    var folderId = "আপনার_ফোল্ডার_আইডি_এখানে"; // <--- এখানে আপনার ড্রাইভ ফোল্ডার আইডি দিন
+    
+    try {
+      if (data.teamLogo && data.teamLogo.indexOf("base64") !== -1 && folderId !== "আপনার_ফোল্ডার_আইডি_এখানে") {
+        var folder = DriveApp.getFolderById(folderId); 
+        var contentType = data.teamLogo.split(",")[0].split(":")[1].split(";")[0];
+        var bytes = Utilities.base64Decode(data.teamLogo.split(",")[1]);
+        var blob = Utilities.newBlob(bytes, contentType, data.teamName + "_Logo");
+        var file = folder.createFile(blob);
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        logoUrl = file.getUrl();
+      } else if (folderId === "আপনার_ফোল্ডার_আইডি_এখানে") {
+        logoUrl = "Check Script: Folder ID Not Set";
+      }
+    } catch (logoErr) {
+      logoUrl = "Logo Error: " + logoErr.toString();
+    }
+
+    // ৩. শিটে ডাটা জমা করা (এটি এখন ১০০% কাজ করবে)
+    sheet.appendRow([
+      new Date(),               // A: Timestamp
+      data.teamName || "N/A",  // B
+      data.teamEmail || "N/A", // C
+      data.phone || "N/A",     // D
+      data.captainFullName || "N/A", // E
+      logoUrl,                 // F
+      data.captainName || "N/A", // G
+      data.captainUid || "N/A",  // H
+      data.player2Name || "N/A", // I
+      data.player2Uid || "N/A",  // J
+      data.player3Name || "N/A", // K
+      data.player3Uid || "N/A",  // L
+      data.player4Name || "N/A", // M
+      data.player4Uid || "N/A",  // N
+      data.player5Name || "",    // O
+      data.player5Uid || ""      // P
+    ]);
+
+    return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
+  } catch (err) {
+    // কোনো মারাত্মক ভুল হলে সেটি রিটার্ন করবে
+    return ContentService.createTextOutput("Critical Error: " + err.toString()).setMimeType(ContentService.MimeType.TEXT);
+  }
+}
+```
+
+২. কমন ভুলের সমাধান (চেকলিস্ট):
+----------------------------
+- **Deploy as "Anyone":** আপনি যখন স্ক্রিপ্ট ডেপ্লয় করছেন, তখন "Who has access" অবশ্যই "Anyone" দিয়েছেন তো? (এটি চেক করতে Deploy > Manage Deployments এ যান)।
+- **New URL:** প্রতিবার `doPost` ফাংশন এডিট করলে আপনাকে "New Deployment" করতে হবে এবং নতুন URL টি `Registration.tsx` এ বসাতে হবে। আগের URL এ নতুন কোড কাজ করে না।
+- **Sheet Tab Name:** আপনার স্প্রেডশিটে নিচের দিকে ট্যাবটির নাম কি "Registrations"? যদি না থাকে, স্ক্রিপ্ট নিজে একটি ট্যাব তৈরি করে নিবে। আপনি কি অন্য কোনো ট্যাবে (যেমন Sheet1) ডাটা খুঁজছেন? শিটের সব ট্যাব চেক করুন।
+
+৩. ফোল্ডার আইডি (Folder ID) কোথায় পাবেন?
+-------------------------------------
+গুগল ড্রাইভের সেই ফোল্ডারটি ওপেন করুন যেখানে লোগো জমা হবে। ব্রাউজারের অ্যাড্রেস বারে লিংকের শেষের অংশটিই হলো আইডি।
+যেমন: `drive.google.com/drive/folders/1abcde12345` -> এখানে `1abcde12345` হলো আইডি।
+
+ধন্যবাদ,
+GENIX Battle Tech Support
