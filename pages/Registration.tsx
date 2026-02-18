@@ -135,7 +135,8 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       captainAccountName: currentUser.displayName || currentUser.email.split('@')[0],
       isApproved: userRegistration?.isApproved || false,
       timestamp: new Date().toISOString(),
-      registrationDate: userRegistration?.registrationDate || new Date().toISOString()
+      registrationDate: userRegistration?.registrationDate || new Date().toISOString(),
+      likes: userRegistration?.likes || [] // Initialize likes array
     };
 
     try {

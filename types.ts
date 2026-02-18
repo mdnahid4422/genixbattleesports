@@ -57,6 +57,7 @@ export interface Team {
   registrationDate: string;
   isApproved: boolean; 
   userUid?: string; 
+  likes?: string[]; // Array of UIDs who liked the team
 }
 
 export interface AppData {
