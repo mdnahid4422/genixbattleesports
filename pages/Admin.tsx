@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
-import { LogOut, Shield, Trophy, Users, Target, Zap, Globe, LogIn, Chrome, Loader2, Save, Trash2, Plus, Edit3, X, Camera, Lock, Key, Calendar, Hash } from 'lucide-react';
-import { auth, googleProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, db, doc, setDoc } from '../firebase';
-import { AppData, Room, RoomStatus } from '../types';
+import React, { useState, useEffect } from 'react';
+import { LogOut, Shield, Trophy, Users, Target, Zap, LogIn, Chrome, Loader2, Save, Trash2, Plus, Edit3, X, Camera, Lock, Key, Calendar, Hash, Check, RefreshCw } from 'lucide-react';
+import { auth, googleProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, db, doc, setDoc, updateDoc, collection, onSnapshot, query, where } from '../firebase';
+import { AppData, Room, RoomStatus, Team } from '../types';
 
 interface AdminProps {
   db: AppData;
@@ -22,6 +22,10 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [roomFormData, setRoomFormData] = useState<Partial<Room>>({});
   const [isProcessingImg, setIsProcessingImg] = useState(false);
+
+  // Moderation State
+  const [pendingTeams, setPendingTeams] = useState<Team[]>([]);
+  const [isTeamsLoading, setIsTeamsLoading] = useState(true);
 
   // --- Auth Functions ---
   const handleGoogleLogin = async () => {
@@ -49,6 +53,42 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
     try {
       await setDoc(doc(db, 'app', 'global_data'), updatedDb);
     } catch (err) { console.error("Sync Error:", err); }
+  };
+
+  // --- Moderation Listeners ---
+  useEffect(() => {
+    if (currentUser?.isAdmin) {
+      setIsTeamsLoading(true);
+      const q = query(collection(db, 'registrations')); // সব রেজিস্ট্রেশন লোড করছি
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const teams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Team));
+        setPendingTeams(teams);
+        setIsTeamsLoading(false);
+      });
+      return () => unsubscribe();
+    }
+  }, [currentUser]);
+
+  // --- Moderation Actions ---
+  const approveTeam = async (teamId: string) => {
+    try {
+      await updateDoc(doc(db, 'registrations', teamId), { isApproved: true });
+      alert("Team Approved successfully!");
+    } catch (err) {
+      alert("Error approving team.");
+    }
+  };
+
+  const deleteTeam = async (teamId: string) => {
+    if (window.confirm("Are you sure you want to REJECT and DELETE this team registration?")) {
+      try {
+        // ফায়ারবেসে ডিলিট করার মেকানিজম (এখানে আমরা জাস্ট অ্যাপ্রুভাল রিজেক্ট দেখাচ্ছি)
+        await setDoc(doc(db, 'registrations', teamId), { ...pendingTeams.find(t => t.id === teamId), isApproved: false });
+        alert("Team marked as unapproved/hidden.");
+      } catch (err) {
+        alert("Error deleting team.");
+      }
+    }
   };
 
   // --- Room Management ---
@@ -148,7 +188,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
     <div className="py-12 px-4 md:px-8 max-w-7xl mx-auto min-h-screen">
       <div className="glass-card rounded-[40px] p-8 border-white/10 mb-12 flex flex-col md:flex-row items-center justify-between gap-8">
         <div className="flex items-center space-x-6">
-          <img src={currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.uid}`} className="w-20 h-20 rounded-[28px] border-4 border-purple-500 p-1" />
+          <img src={currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.uid}`} className="w-20 h-20 rounded-[28px] border-4 border-purple-500 p-1" alt="Avatar" />
           <div>
             <h2 className="text-2xl font-black font-orbitron text-white uppercase italic">{currentUser.displayName}</h2>
             <span className="text-[10px] font-black uppercase text-purple-400 tracking-widest">{currentUser.isAdmin ? 'Command Centre Access' : 'Athlete Profile'}</span>
@@ -159,7 +199,13 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
         </button>
       </div>
 
-      {currentUser.isAdmin && (
+      {!currentUser.isAdmin ? (
+        <div className="text-center py-20 glass-card rounded-[40px] border-white/10">
+          <Users size={48} className="mx-auto mb-4 text-gray-600" />
+          <h3 className="text-xl font-bold text-white mb-2">Welcome Player!</h3>
+          <p className="text-gray-500 text-sm">You are logged in as a combatant. Only administrators can access the Control Center.</p>
+        </div>
+      ) : (
         <div className="space-y-12">
           <div className="flex flex-wrap bg-white/5 p-1 rounded-2xl border border-white/10 gap-1 w-fit">
             <AdminTab active={activeTab === 'rooms'} onClick={() => setActiveTab('rooms')} icon={<Shield size={16}/>} label="Manage Rooms" />
@@ -168,7 +214,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
           </div>
 
           {activeTab === 'rooms' && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in">
               <div className="flex justify-between items-center">
                 <h3 className="font-orbitron text-2xl font-black italic text-white uppercase">Arena Control</h3>
                 <button onClick={openAddRoom} className="flex items-center space-x-2 px-6 py-3 bg-purple-600 rounded-xl text-xs font-black uppercase text-white shadow-lg shadow-purple-600/30">
@@ -179,7 +225,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {appDb.rooms.map(room => (
                   <div key={room.id} className="glass-card rounded-3xl overflow-hidden border-white/10 flex flex-col">
-                    <img src={room.thumbnail} className="h-40 w-full object-cover" />
+                    <img src={room.thumbnail} className="h-40 w-full object-cover" alt="Thumbnail" />
                     <div className="p-6 space-y-4">
                       <div className="flex justify-between items-start">
                         <h4 className="font-bold text-white uppercase italic">{room.title}</h4>
@@ -205,6 +251,52 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
               </div>
             </div>
           )}
+
+          {activeTab === 'teams' && (
+            <div className="space-y-6 animate-in fade-in">
+               <div className="flex justify-between items-center">
+                <h3 className="font-orbitron text-2xl font-black italic text-white uppercase">Moderation Queue</h3>
+                <div className="flex items-center space-x-2 text-[10px] font-bold text-gray-500 uppercase">
+                  <RefreshCw size={12} className={isTeamsLoading ? 'animate-spin' : ''} />
+                  <span>Auto-Sync Active</span>
+                </div>
+              </div>
+
+              {isTeamsLoading ? (
+                <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-purple-500" size={40} /></div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {pendingTeams.length > 0 ? pendingTeams.map(team => (
+                    <div key={team.id} className="glass-card p-6 rounded-3xl border-white/10 flex flex-col md:flex-row items-center gap-6">
+                      <div className="w-20 h-20 rounded-2xl bg-black/50 border border-white/10 overflow-hidden shrink-0">
+                        <img src={team.teamLogo} className="w-full h-full object-cover" alt="Logo" />
+                      </div>
+                      <div className="flex-grow text-center md:text-left">
+                        <h4 className="text-xl font-black text-white italic uppercase tracking-tight">{team.teamName}</h4>
+                        <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">{team.captainFullName} | {team.phone}</p>
+                      </div>
+                      <div className="flex gap-3">
+                        {team.isApproved ? (
+                          <div className="px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-xl text-green-500 text-[10px] font-black uppercase">Approved</div>
+                        ) : (
+                          <button onClick={() => approveTeam(team.id)} className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-xl text-white text-[10px] font-black uppercase flex items-center space-x-2 transition-all shadow-lg shadow-green-600/20">
+                            <Check size={14} /> <span>Approve Squad</span>
+                          </button>
+                        )}
+                        <button onClick={() => deleteTeam(team.id)} className="p-3 bg-red-600/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-600 hover:text-white transition-all">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="py-20 text-center glass-card rounded-3xl border-white/5">
+                      <p className="text-gray-500 italic uppercase font-bold text-xs">No registrations found in the database.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -219,10 +311,9 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
             </div>
             
             <div className="p-8 max-h-[70vh] overflow-y-auto space-y-6">
-              {/* Image Picker */}
               <div className="flex flex-col items-center space-y-4 mb-8">
                 <div className="relative w-full h-48 rounded-[32px] overflow-hidden border-2 border-dashed border-white/20 bg-white/5 group">
-                  <img src={roomFormData.thumbnail} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                  <img src={roomFormData.thumbnail} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="Thumb" />
                   <label className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer">
                     {isProcessingImg ? <Loader2 className="animate-spin text-purple-500" /> : <><Camera className="text-white mb-2" size={32} /><span className="text-[10px] font-black uppercase text-white bg-black/50 px-3 py-1 rounded-full">Change Thumbnail</span></>}
                     <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
@@ -231,21 +322,21 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <AdminInput label="Arena Title" icon={<Target size={16}/>} value={roomFormData.title || ''} onChange={v => setRoomFormData({...roomFormData, title: v})} placeholder="e.g. ALPHA CHAMPIONS" />
+                <AdminInput label="Arena Title" icon={<Target size={16}/>} value={roomFormData.title || ''} onChange={(v: string) => setRoomFormData({...roomFormData, title: v})} placeholder="e.g. ALPHA CHAMPIONS" />
                 <div className="flex flex-col space-y-2">
                   <label className="text-[10px] font-black text-gray-500 uppercase">Arena Status</label>
                   <select value={roomFormData.status} onChange={e => setRoomFormData({...roomFormData, status: e.target.value as RoomStatus})} className="bg-black/50 border border-white/10 rounded-2xl p-4 text-white font-bold outline-none focus:border-purple-500 appearance-none">
                     <option value={RoomStatus.UPCOMING}>Upcoming</option>
-                    <option value={RoomStatus.COMPLETE}>Complete (Results View)</option>
+                    <option value={RoomStatus.COMPLETE}>Complete</option>
                     <option value={RoomStatus.CANCELLED}>Cancelled</option>
                   </select>
                 </div>
-                <AdminInput label="Room ID" icon={<Hash size={16}/>} value={roomFormData.roomId || ''} onChange={v => setRoomFormData({...roomFormData, roomId: v})} placeholder="987123" />
-                <AdminInput label="Room Password" icon={<Lock size={16}/>} value={roomFormData.password || ''} onChange={v => setRoomFormData({...roomFormData, password: v})} placeholder="gx123" />
-                <AdminInput label="Secret Access Code" icon={<Key size={16}/>} value={roomFormData.secretCode || ''} onChange={v => setRoomFormData({...roomFormData, secretCode: v})} placeholder="ALPHA99" />
-                <AdminInput label="Match Count" icon={<Zap size={16}/>} value={roomFormData.matchCount?.toString() || '1'} onChange={v => setRoomFormData({...roomFormData, matchCount: parseInt(v) || 1})} type="number" />
+                <AdminInput label="Room ID" icon={<Hash size={16}/>} value={roomFormData.roomId || ''} onChange={(v: string) => setRoomFormData({...roomFormData, roomId: v})} placeholder="987123" />
+                <AdminInput label="Room Password" icon={<Lock size={16}/>} value={roomFormData.password || ''} onChange={(v: string) => setRoomFormData({...roomFormData, password: v})} placeholder="gx123" />
+                <AdminInput label="Secret Access Code" icon={<Key size={16}/>} value={roomFormData.secretCode || ''} onChange={(v: string) => setRoomFormData({...roomFormData, secretCode: v})} placeholder="ALPHA99" />
+                <AdminInput label="Match Count" icon={<Zap size={16}/>} value={roomFormData.matchCount?.toString() || '1'} onChange={(v: string) => setRoomFormData({...roomFormData, matchCount: parseInt(v) || 1})} type="number" />
                 <div className="md:col-span-2">
-                  <AdminInput label="Start Date & Time" icon={<Calendar size={16}/>} value={roomFormData.time || ''} onChange={v => setRoomFormData({...roomFormData, time: v})} type="datetime-local" />
+                  <AdminInput label="Start Date & Time" icon={<Calendar size={16}/>} value={roomFormData.time || ''} onChange={(v: string) => setRoomFormData({...roomFormData, time: v})} type="datetime-local" />
                 </div>
               </div>
             </div>
@@ -277,14 +368,6 @@ const AdminTab = ({ active, onClick, icon, label }: any) => (
   <button onClick={onClick} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center space-x-2 transition-all ${active ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' : 'text-gray-500 hover:text-white'}`}>
     {icon}<span>{label}</span>
   </button>
-);
-
-const PlayerCard = ({ icon, label, value }: any) => (
-  <div className="glass-card p-8 rounded-[40px] border-white/10 text-center flex flex-col items-center">
-    <div className="mb-4 bg-white/5 p-4 rounded-2xl">{icon}</div>
-    <div className="text-4xl font-black font-orbitron text-white">{value}</div>
-    <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-2">{label}</div>
-  </div>
 );
 
 export default Admin;

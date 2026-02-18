@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Trophy, Users, Shield, Zap, ArrowRight, Gamepad2 } from 'lucide-react';
 import { AppData } from '../types';
 
@@ -10,8 +10,10 @@ interface HomeProps {
 
 const Home: React.FC<HomeProps> = ({ db }) => {
   const [activePoster, setActivePoster] = useState(0);
+  const navigate = useNavigate();
 
   useEffect(() => {
+    if (db.posters.length === 0) return;
     const timer = setInterval(() => {
       setActivePoster(prev => (prev + 1) % db.posters.length);
     }, 5000);
@@ -34,14 +36,20 @@ const Home: React.FC<HomeProps> = ({ db }) => {
                 {poster.title}
               </h2>
               <div className="flex space-x-4">
-                <Link to="/registration" className="px-8 py-4 bg-purple-600 hover:bg-purple-700 rounded-full font-bold text-lg shadow-xl shadow-purple-500/30 transition-all transform hover:scale-105 flex items-center space-x-2">
+                <button 
+                  onClick={() => navigate('/registration')}
+                  className="px-8 py-4 bg-purple-600 hover:bg-purple-700 rounded-full font-bold text-lg shadow-xl shadow-purple-500/30 transition-all transform hover:scale-105 flex items-center space-x-2"
+                >
                   <Shield size={20} />
                   <span>Register Now</span>
-                </Link>
-                <Link to="/rooms" className="px-8 py-4 glass-card hover:bg-white/10 rounded-full font-bold text-lg transition-all transform hover:scale-105 flex items-center space-x-2">
+                </button>
+                <button 
+                  onClick={() => navigate('/rooms')}
+                  className="px-8 py-4 glass-card hover:bg-white/10 rounded-full font-bold text-lg transition-all transform hover:scale-105 flex items-center space-x-2"
+                >
                   <Gamepad2 size={20} />
                   <span>View Rooms</span>
-                </Link>
+                </button>
               </div>
             </div>
           </div>
@@ -75,10 +83,13 @@ const Home: React.FC<HomeProps> = ({ db }) => {
           <p className="text-gray-400 max-w-2xl mb-12 text-lg">Check out the upcoming tournaments and secure your spot. Only the best will rise to the top of the 𝑮𝑬𝑵𝑰𝑿 Battle ladder.</p>
           <div className="flex flex-wrap justify-center gap-4">
              <a href="https://chat.whatsapp.com/DCgJmPewXlxK9BTec2Pk7D?mode=gi_t" target="_blank" className="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-xl font-bold transition-all shadow-lg shadow-green-600/20">Join WhatsApp Community</a>
-             <Link to="/points" className="px-6 py-3 glass-card hover:bg-white/10 rounded-xl font-bold transition-all flex items-center space-x-2">
+             <button 
+               onClick={() => navigate('/points')}
+               className="px-6 py-3 glass-card hover:bg-white/10 rounded-xl font-bold transition-all flex items-center space-x-2"
+             >
                 <span>View Leaderboard</span>
                 <ArrowRight size={18} />
-             </Link>
+             </button>
           </div>
         </div>
       </section>

@@ -1,3 +1,4 @@
+
 export enum RoomStatus {
   UPCOMING = 'Upcoming',
   CANCELLED = 'Cancelled',
@@ -49,7 +50,8 @@ export interface Team {
   player5Uid?: string;
   phone: string;
   registrationDate: string;
-  isApproved?: boolean; // New: To allow admins to moderate team visibility
+  isApproved: boolean; // Field for admin moderation
+  userUid?: string; // Reference to the user who registered the team
 }
 
 export interface Poster {

@@ -1,7 +1,8 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+// Added query and where to the firestore imports
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
 /**
  * নির্দেশ: Firebase Console (console.firebase.google.com) থেকে আপনার প্রজেক্টের 
@@ -32,5 +33,7 @@ export {
   setDoc,
   updateDoc,
   onSnapshot,
-  collection
+  collection,
+  query,
+  where
 };
