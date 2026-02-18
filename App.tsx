@@ -18,8 +18,33 @@ import Admin from './pages/Admin';
 
 const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> = ({ appDb, setAppDb, currentUser }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [hasTeam, setHasTeam] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    if (!currentUser) {
+      setHasTeam(false);
+      return;
+    }
+    // Check if user is captain
+    const unsubReg = onSnapshot(doc(db, 'registrations', currentUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setHasTeam(true);
+      } else {
+        // Check if user is accepted member
+        const unsubMem = onSnapshot(doc(db, 'users_membership', currentUser.uid), (memDoc) => {
+          if (memDoc.exists() && memDoc.data().status === 'accepted') {
+            setHasTeam(true);
+          } else {
+            setHasTeam(false);
+          }
+        });
+        return () => unsubMem();
+      }
+    });
+    return () => unsubReg();
+  }, [currentUser]);
 
   const handleNav = (to: string) => {
     navigate(to);
@@ -46,7 +71,6 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
 
   return (
     <div className="min-h-screen flex flex-col bg-[#060608]">
-      {/* Navbar */}
       <header className="sticky top-0 z-[100] glass-card border-b border-white/10 px-4 md:px-8 py-4 flex items-center justify-between">
         <div onClick={() => handleNav('/')} className="flex items-center space-x-3 cursor-pointer group">
           <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/20 shrink-0 group-hover:scale-110 transition-transform">
@@ -60,7 +84,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
         <nav className="hidden lg:flex items-center space-x-1">
           <NavLink to="/" icon={LayoutGrid}>Home</NavLink>
           <NavLink to="/rooms" icon={List}>Rooms</NavLink>
-          <NavLink to="/registration" icon={Shield}>Join</NavLink>
+          <NavLink to="/registration" icon={Shield}>{hasTeam ? 'My Team' : 'Join'}</NavLink>
           <NavLink to="/teams" icon={Users}>Teams</NavLink>
           <NavLink to="/points" icon={Trophy}>Points</NavLink>
           <NavLink to="/rules" icon={List}>Rules</NavLink>
@@ -89,20 +113,16 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
         </div>
       </header>
 
-      {/* Mobile Nav */}
       {isMenuOpen && (
         <div className="fixed inset-0 z-[90] lg:hidden">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)}></div>
           <div className="absolute right-0 top-20 bottom-0 w-72 glass-card border-l border-white/10 flex flex-col p-6 space-y-4 animate-in slide-in-from-right duration-300">
              <NavLink to="/" icon={LayoutGrid}>Home</NavLink>
              <NavLink to="/rooms" icon={List}>Rooms</NavLink>
-             <NavLink to="/registration" icon={Shield}>Join Tournament</NavLink>
-             <NavLink to="/teams" icon={Users}>All Teams</NavLink>
-             <NavLink to="/points" icon={Trophy}>Leaderboard</NavLink>
+             <NavLink to="/registration" icon={Shield}>{hasTeam ? 'My Team' : 'Join'}</NavLink>
+             <NavLink to="/teams" icon={Users}>Teams</NavLink>
+             <NavLink to="/points" icon={Trophy}>Points</NavLink>
              <NavLink to="/rules" icon={List}>Rules</NavLink>
-             <div className="mt-auto pt-6 border-t border-white/10">
-               <NavLink to="/login" icon={UserCircle}>{currentUser ? 'My Profile' : 'Sign In'}</NavLink>
-             </div>
           </div>
         </div>
       )}
@@ -121,7 +141,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
       </main>
 
       <footer className="glass-card border-t border-white/10 py-8 px-4 text-center text-[10px] text-gray-500 font-bold uppercase tracking-widest">
-         &copy; 2024 𝑮𝑬𝑵𝑰𝑿 Battle E-Sports. Powered by Firebase Global Sync.
+         &copy; 2024 𝑮𝑬𝑵𝑰𝑿 Battle E-Sports.
       </footer>
     </div>
   );
@@ -137,7 +157,6 @@ const App: React.FC = () => {
       if (user) {
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         const userData = userDoc.exists() ? userDoc.data() : { role: 'player' };
-        
         setCurrentUser({
           uid: user.uid,
           email: user.email,
@@ -154,9 +173,9 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const unsubData = onSnapshot(doc(db, 'app', 'global_data'), (doc) => {
-      if (doc.exists()) {
-        setAppDb(doc.data() as AppData);
+    const unsubData = onSnapshot(doc(db, 'app', 'global_data'), (docSnap) => {
+      if (docSnap.exists()) {
+        setAppDb(docSnap.data() as AppData);
       }
     });
     return () => unsubData();
@@ -166,7 +185,6 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center">
         <Loader2 className="animate-spin text-purple-500 mb-4" size={48} />
-        <h2 className="font-orbitron text-white text-sm font-bold tracking-widest uppercase animate-pulse">Initializing Genix Arena...</h2>
       </div>
     );
   }
