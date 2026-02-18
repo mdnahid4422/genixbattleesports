@@ -13,7 +13,6 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
   const [approvedTeams, setApprovedTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Firestore থেকে শুধুমাত্র অনুমোদিত (Approved) টিমগুলো আনা হচ্ছে
   useEffect(() => {
     const q = query(collection(db, 'registrations'), where('isApproved', '==', true));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -76,14 +75,39 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
               <div className="p-6 flex-grow space-y-4">
                 <div className="bg-purple-600/5 p-4 rounded-2xl border border-purple-500/20">
                   <p className="text-[10px] font-black text-purple-400 uppercase mb-3 tracking-widest italic">Captain</p>
-                  <TeamInfoRow label={team.captainName} value={team.captainUid} isCaptain />
+                  <TeamInfoRow 
+                    label={team.captainName} 
+                    value={team.captainAccountName || team.captainUid} 
+                    isCaptain 
+                  />
                 </div>
                 
                 <div className="space-y-3">
                   <p className="text-[10px] font-black text-gray-600 uppercase mb-1 tracking-widest italic">Squad Roster</p>
-                  {team.player2Name && <TeamInfoRow label={team.player2Name} value={team.player2Uid || '---'} />}
-                  {team.player3Name && <TeamInfoRow label={team.player3Name} value={team.player3Uid || '---'} />}
-                  {team.player4Name && <TeamInfoRow label={team.player4Name} value={team.player4Uid || '---'} />}
+                  {team.player2Name && (
+                    <TeamInfoRow 
+                      label={team.player2Name} 
+                      value={team.player2AccountName || (team.player2Uid ? 'Verified' : '---')} 
+                    />
+                  )}
+                  {team.player3Name && (
+                    <TeamInfoRow 
+                      label={team.player3Name} 
+                      value={team.player3AccountName || (team.player3Uid ? 'Verified' : '---')} 
+                    />
+                  )}
+                  {team.player4Name && (
+                    <TeamInfoRow 
+                      label={team.player4Name} 
+                      value={team.player4AccountName || (team.player4Uid ? 'Verified' : '---')} 
+                    />
+                  )}
+                  {team.player5Name && (
+                    <TeamInfoRow 
+                      label={team.player5Name} 
+                      value={team.player5AccountName || (team.player5Uid ? 'Verified' : '---')} 
+                    />
+                  )}
                 </div>
               </div>
 
@@ -110,7 +134,7 @@ const TeamInfoRow = ({ label, value, isCaptain }: any) => (
       <User size={14} className={isCaptain ? "text-purple-400" : "text-gray-500"} />
       <span className={`font-bold uppercase tracking-tight ${isCaptain ? "text-white" : "text-gray-400"}`}>{label}</span>
     </div>
-    <span className="font-black font-mono bg-black/30 px-2 py-0.5 rounded border border-white/5 text-purple-300">{value}</span>
+    <span className="font-black font-mono bg-black/30 px-3 py-1 rounded-xl border border-white/5 text-purple-300 tracking-tighter uppercase">{value}</span>
   </div>
 );
 

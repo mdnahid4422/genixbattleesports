@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, User, Phone, Camera, Loader2, Mail, Edit3, Eye, ArrowRight, UserPlus, Search, Check, X, Clock, CheckCircle } from 'lucide-react';
-import { AppData } from '../types';
+import { AppData, Team } from '../types';
 import { auth, db, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, onAuthStateChanged } from '../firebase';
 
 interface RegistrationProps {
@@ -15,7 +15,7 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwxRKscj8kGFe
 const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [viewState, setViewState] = useState<'choice' | 'register' | 'join_list' | 'view_team'>('choice');
-  const [userRegistration, setUserRegistration] = useState<any>(null);
+  const [userRegistration, setUserRegistration] = useState<Team | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [allTeams, setAllTeams] = useState<any[]>([]);
@@ -36,34 +36,30 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ১. ইউজার ডাটা এবং টিম চেক (লোডিং ফিক্স)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
         try {
-          // ক্যাপ্টেন কিনা চেক
           const regDoc = await getDoc(doc(db, 'registrations', user.uid));
           if (regDoc.exists()) {
-            const data = regDoc.data();
+            const data = regDoc.data() as Team;
             setUserRegistration(data);
             setFormData(data as any);
             setViewState('view_team');
             
-            // রিকোয়েস্ট শোনা শুরু
             onSnapshot(collection(db, `registrations/${user.uid}/requests`), (snapshot) => {
               const reqs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
               setJoinRequests(reqs);
             });
           } else {
-            // মেম্বার কিনা চেক
             const memDoc = await getDoc(doc(db, 'users_membership', user.uid));
             if (memDoc.exists()) {
               const membership = memDoc.data();
               if (membership.status === 'accepted') {
                 const teamDoc = await getDoc(doc(db, 'registrations', membership.teamId));
                 if (teamDoc.exists()) {
-                  setUserRegistration(teamDoc.data());
+                  setUserRegistration(teamDoc.data() as Team);
                   setViewState('view_team');
                 }
               }
@@ -76,12 +72,11 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
         setCurrentUser(null);
         setViewState('choice');
       }
-      setInitialLoading(false); // লোডিং বন্ধ
+      setInitialLoading(false); 
     });
     return () => unsubscribe();
   }, []);
 
-  // ২. সব টিমের লিস্ট লোড করা
   useEffect(() => {
     const unsubTeams = onSnapshot(collection(db, 'registrations'), (snapshot) => {
       const teams = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -91,7 +86,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     return () => unsubTeams();
   }, []);
 
-  // ৩. ইমেজ কমপ্রেশন (পারফরম্যান্স ফিক্স)
   const compressImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -125,7 +119,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     }
   };
 
-  // ৪. সাবমিট লজিক
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -139,14 +132,16 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     const payload = { 
       ...formData, 
       userUid: currentUser.uid, 
+      captainAccountName: currentUser.displayName || currentUser.email.split('@')[0],
       isApproved: userRegistration?.isApproved || false,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      registrationDate: userRegistration?.registrationDate || new Date().toISOString()
     };
 
     try {
       fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
       await setDoc(doc(db, 'registrations', currentUser.uid), payload);
-      setUserRegistration(payload);
+      setUserRegistration(payload as any);
       setIsEditing(false);
       setViewState('view_team');
       alert(userRegistration ? "Team updated!" : "Registration submitted! Admin approval pending.");
@@ -189,9 +184,13 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     try {
       await updateDoc(doc(db, `registrations/${currentUser.uid}/requests`, req.userId), { status: 'accepted' });
       await updateDoc(doc(db, 'users_membership', req.userId), { status: 'accepted' });
-      const updatedTeam = { ...userRegistration, [`${req.slotKey}Uid`]: req.userId };
+      const updatedTeam = { 
+        ...userRegistration, 
+        [`${req.slotKey}Uid`]: req.userId,
+        [`${req.slotKey}AccountName`]: req.userName 
+      };
       await setDoc(doc(db, 'registrations', currentUser.uid), updatedTeam);
-      setUserRegistration(updatedTeam);
+      setUserRegistration(updatedTeam as any);
       alert("Player added to roster!");
     } catch (err) {
       alert("Error approving player.");
@@ -213,7 +212,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     </div>
   );
 
-  // --- Choice View ---
   if (viewState === 'choice') {
     return (
       <div className="py-20 px-4 max-w-4xl mx-auto animate-in fade-in">
@@ -229,7 +227,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     );
   }
 
-  // --- Join List View ---
   if (viewState === 'join_list') {
     const filteredTeams = allTeams.filter(t => t.teamName?.toLowerCase().includes(searchTerm.toLowerCase()));
     return (
@@ -277,7 +274,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     );
   }
 
-  // --- My Team View ---
   if (viewState === 'view_team' && userRegistration && !isEditing) {
     const isCaptain = currentUser.uid === userRegistration.userUid;
     return (
@@ -302,11 +298,38 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
             <div className="space-y-6">
               <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Team Roster</h4>
               <div className="space-y-3">
-                <RosterRow name={userRegistration.captainName} role="Captain" uid={userRegistration.captainUid} active />
-                <RosterRow name={userRegistration.player2Name} role="P2" uid={userRegistration.player2Uid} active={!!userRegistration.player2Uid} />
-                <RosterRow name={userRegistration.player3Name} role="P3" uid={userRegistration.player3Uid} active={!!userRegistration.player3Uid} />
-                <RosterRow name={userRegistration.player4Name} role="P4" uid={userRegistration.player4Uid} active={!!userRegistration.player4Uid} />
-                {userRegistration.player5Name && <RosterRow name={userRegistration.player5Name} role="P5 (Sub)" uid={userRegistration.player5Uid} active={!!userRegistration.player5Uid} />}
+                <RosterRow 
+                  name={userRegistration.captainName} 
+                  role="Captain" 
+                  accountName={userRegistration.captainAccountName} 
+                  active 
+                />
+                <RosterRow 
+                  name={userRegistration.player2Name} 
+                  role="P2" 
+                  accountName={userRegistration.player2AccountName} 
+                  active={!!userRegistration.player2Uid} 
+                />
+                <RosterRow 
+                  name={userRegistration.player3Name} 
+                  role="P3" 
+                  accountName={userRegistration.player3AccountName} 
+                  active={!!userRegistration.player3Uid} 
+                />
+                <RosterRow 
+                  name={userRegistration.player4Name} 
+                  role="P4" 
+                  accountName={userRegistration.player4AccountName} 
+                  active={!!userRegistration.player4Uid} 
+                />
+                {userRegistration.player5Name && (
+                  <RosterRow 
+                    name={userRegistration.player5Name} 
+                    role="P5 (Sub)" 
+                    accountName={userRegistration.player5AccountName} 
+                    active={!!userRegistration.player5Uid} 
+                  />
+                )}
               </div>
             </div>
 
@@ -352,7 +375,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     );
   }
 
-  // --- Form View ---
   return (
     <div className="py-12 px-4 md:px-8 max-w-5xl mx-auto animate-in fade-in">
        <button onClick={() => userRegistration ? setViewState('view_team') : setViewState('choice')} className="text-[10px] font-black uppercase text-purple-400 mb-6 hover:underline">← Cancel Registration</button>
@@ -421,13 +443,17 @@ const ChoiceCard = ({ title, desc, icon, onClick, primary }: any) => (
   </button>
 );
 
-const RosterRow = ({ name, role, uid, active }: any) => (
+const RosterRow = ({ name, role, accountName, active }: any) => (
   <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${active ? 'bg-purple-600/10 border-purple-500/30' : 'bg-white/2 border-white/5 opacity-40'}`}>
     <div className="flex items-center space-x-4">
        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${active ? 'bg-purple-600 text-white' : 'bg-white/10 text-gray-500'}`}>{role}</div>
        <span className={`text-sm font-black italic ${active ? 'text-white' : 'text-gray-500'}`}>{name || 'EMPTY'}</span>
     </div>
-    <span className="text-[10px] font-mono text-gray-500 bg-black/50 px-2 py-1 rounded border border-white/5 tracking-tighter">{uid || 'N/A'}</span>
+    <div className="flex items-center space-x-2">
+      <span className="text-[10px] font-bold text-gray-500 bg-black/50 px-3 py-1.5 rounded-xl border border-white/5 tracking-tight uppercase">
+        {accountName || (active ? 'Loading...' : 'N/A')}
+      </span>
+    </div>
   </div>
 );
 

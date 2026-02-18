@@ -40,18 +40,31 @@ export interface Team {
   captainFullName: string;
   captainName: string; // This is In-Game Name
   captainUid: string;
+  captainAccountName?: string; // Display name of the captain's account
   player2Name?: string;
   player2Uid?: string;
+  player2AccountName?: string;
   player3Name?: string;
   player3Uid?: string;
+  player3AccountName?: string;
   player4Name?: string;
   player4Uid?: string;
+  player4AccountName?: string;
   player5Name?: string;
   player5Uid?: string;
+  player5AccountName?: string;
   phone: string;
   registrationDate: string;
-  isApproved: boolean; // Field for admin moderation
-  userUid?: string; // Reference to the user who registered the team
+  isApproved: boolean; 
+  userUid?: string; 
+}
+
+export interface AppData {
+  rooms: Room[];
+  teams: Team[];
+  posters: Poster[];
+  points: PointEntry[];
+  rules: string[];
 }
 
 export interface Poster {
@@ -67,12 +80,4 @@ export interface PointEntry {
   rankPoints: number;
   killPoints: number;
   totalPoints: number;
-}
-
-export interface AppData {
-  rooms: Room[];
-  teams: Team[];
-  posters: Poster[];
-  points: PointEntry[];
-  rules: string[];
 }
