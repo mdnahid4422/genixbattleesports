@@ -84,7 +84,7 @@ const App: React.FC = () => {
               <Shield className="text-white" size={24} />
             </div>
             <h1 className="font-orbitron text-lg md:text-2xl font-black tracking-tighter italic text-white neon-text-purple whitespace-nowrap">
-              𝑮𝑬𝑵𝑰𝑿 Battle
+              𝑮𝑬𝑵𝑰𝑿 Battle E-Sports
             </h1>
           </Link>
 
