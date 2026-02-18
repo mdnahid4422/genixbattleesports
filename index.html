@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,6 +20,7 @@
       background-color: var(--dark-bg);
       color: #f3f4f6;
       overflow-x: hidden;
+      margin: 0;
     }
     .font-orbitron { font-family: 'Orbitron', sans-serif; }
     .neon-text-purple { text-shadow: 0 0 8px var(--primary-neon), 0 0 20px var(--primary-neon); }
@@ -29,9 +29,6 @@
       background: rgba(255, 255, 255, 0.03);
       backdrop-filter: blur(12px);
       border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .neon-gradient-bg {
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.2) 50%, rgba(239, 68, 68, 0.2) 100%);
     }
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: #111; }
@@ -52,5 +49,7 @@
 </head>
 <body>
   <div id="root"></div>
+  <!-- মেইন এন্ট্রি পয়েন্ট কানেক্ট করা হলো -->
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>

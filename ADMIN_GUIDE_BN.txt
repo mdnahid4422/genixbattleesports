@@ -1,90 +1,35 @@
 ============================================================
-           GENIX BATTLE - GOOGLE SHEET & DRIVE SYNC GUIDE
+           GENIX BATTLE - ADMIN CONTROL GUIDE (BN)
 ============================================================
 
-রেজিস্ট্রেশন "Successful" দেখাচ্ছে কিন্তু শিটে ডাটা আসছে না?
-এর সমাধান নিচে দেওয়া হলো:
-
-১. শক্তিশালী গুগল স্ক্রিপ্ট কোড (এটি কপি করে আগেরটি মুছে দিন):
+১. অ্যাডমিন অ্যাক্সেস:
 -------------------------------------------------------
-এই কোডটি এমনভাবে তৈরি যাতে লোগো সেভ হতে সমস্যা হলেও আপনার টিমের ডাটা শিটে ১০০% জমা হবে।
+আপনার ওয়েবসাইটের অ্যাডমিন প্যানেলটি পাসওয়ার্ড দিয়ে সুরক্ষিত।
+পাসওয়ার্ড: GENIX_ADMIN_2024
+(এটি আপনি Admin.tsx ফাইলের ADMIN_MASTER_PASS ভেরিয়েবল থেকে পরিবর্তন করতে পারবেন)।
 
-```javascript
-function doPost(e) {
-  try {
-    var jsonString = e.postData.getDataAsString();
-    var data = JSON.parse(jsonString);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    
-    // ১. শিট খুঁজে বের করা বা তৈরি করা
-    var sheet = ss.getSheetByName("Registrations");
-    if (!sheet) {
-      sheet = ss.insertSheet("Registrations");
-      sheet.appendRow([
-        "Timestamp", "Team Name", "Email", "WhatsApp", "Captain Full Name", 
-        "Logo Link", "P1 IGN", "P1 UID", "P2 IGN", "P2 UID", 
-        "P3 IGN", "P3 UID", "P4 IGN", "P4 UID", "P5 IGN", "P5 UID"
-      ]);
-    }
-    
-    // ২. লোগো সেভ করার চেষ্টা (Folder ID ভুল হলে এটি স্কিপ হবে)
-    var logoUrl = "No Logo Uploaded";
-    var folderId = "আপনার_ফোল্ডার_আইডি_এখানে"; // <--- এখানে আপনার ড্রাইভ ফোল্ডার আইডি দিন
-    
-    try {
-      if (data.teamLogo && data.teamLogo.indexOf("base64") !== -1 && folderId !== "আপনার_ফোল্ডার_আইডি_এখানে") {
-        var folder = DriveApp.getFolderById(folderId); 
-        var contentType = data.teamLogo.split(",")[0].split(":")[1].split(";")[0];
-        var bytes = Utilities.base64Decode(data.teamLogo.split(",")[1]);
-        var blob = Utilities.newBlob(bytes, contentType, data.teamName + "_Logo");
-        var file = folder.createFile(blob);
-        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        logoUrl = file.getUrl();
-      } else if (folderId === "আপনার_ফোল্ডার_আইডি_এখানে") {
-        logoUrl = "Check Script: Folder ID Not Set";
-      }
-    } catch (logoErr) {
-      logoUrl = "Logo Error: " + logoErr.toString();
-    }
+২. টিম রেজিস্ট্রেশন এবং এপ্রুভাল:
+-------------------------------------------------------
+- প্লেয়াররা যখন 'Join' পেজে ফর্ম ফিলাপ করবে, সেটি সরাসরি ডাটাবেসে যাবে না। 
+- যেহেতু বর্তমানে ওয়েবসাইটটি ফুল স্ট্যাটিক, তাই আপনি (অ্যাডমিন) নিজে 'Admin Panel' এর 'Team Review' ট্যাব থেকে টিমগুলোর তথ্য যাচাই করে 'Approve' করবেন।
+- একবার অ্যাপ্রুভ করলে তবেই সেটি পাবলিক 'Teams' পেজে দেখা যাবে।
 
-    // ৩. শিটে ডাটা জমা করা (এটি এখন ১০০% কাজ করবে)
-    sheet.appendRow([
-      new Date(),               // A: Timestamp
-      data.teamName || "N/A",  // B
-      data.teamEmail || "N/A", // C
-      data.phone || "N/A",     // D
-      data.captainFullName || "N/A", // E
-      logoUrl,                 // F
-      data.captainName || "N/A", // G
-      data.captainUid || "N/A",  // H
-      data.player2Name || "N/A", // I
-      data.player2Uid || "N/A",  // J
-      data.player3Name || "N/A", // K
-      data.player3Uid || "N/A",  // L
-      data.player4Name || "N/A", // M
-      data.player4Uid || "N/A",  // N
-      data.player5Name || "",    // O
-      data.player5Uid || ""      // P
-    ]);
+৩. রুম আইডি এবং পাসওয়ার্ড (Room IDs):
+-------------------------------------------------------
+- টুর্নামেন্ট শুরু হওয়ার ঠিক আগে অ্যাডমিন প্যানেলে গিয়ে নির্দিষ্ট রুমে রুম আইডি এবং পাসওয়ার্ড বসিয়ে সেভ করুন।
+- প্লেয়াররা শুধুমাত্র সঠিক 'Secret Code' দিয়ে আনলক করলেই সেটি দেখতে পাবে।
 
-    return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
-  } catch (err) {
-    // কোনো মারাত্মক ভুল হলে সেটি রিটার্ন করবে
-    return ContentService.createTextOutput("Critical Error: " + err.toString()).setMimeType(ContentService.MimeType.TEXT);
-  }
-}
-```
+৪. পয়েন্ট টেবিল আপডেট:
+-------------------------------------------------------
+- প্রতি ম্যাচ শেষে অ্যাডমিন প্যানেলের 'Stats' ট্যাবে গিয়ে প্রতিটি টিমের কিল এবং র‍্যাংক পয়েন্ট যোগ করুন। পয়েন্টগুলো অটোমেটিক ক্যালকুলেট হয়ে যাবে।
 
-২. কমন ভুলের সমাধান (চেকলিস্ট):
-----------------------------
-- **Deploy as "Anyone":** আপনি যখন স্ক্রিপ্ট ডেপ্লয় করছেন, তখন "Who has access" অবশ্যই "Anyone" দিয়েছেন তো? (এটি চেক করতে Deploy > Manage Deployments এ যান)।
-- **New URL:** প্রতিবার `doPost` ফাংশন এডিট করলে আপনাকে "New Deployment" করতে হবে এবং নতুন URL টি `Registration.tsx` এ বসাতে হবে। আগের URL এ নতুন কোড কাজ করে না।
-- **Sheet Tab Name:** আপনার স্প্রেডশিটে নিচের দিকে ট্যাবটির নাম কি "Registrations"? যদি না থাকে, স্ক্রিপ্ট নিজে একটি ট্যাব তৈরি করে নিবে। আপনি কি অন্য কোনো ট্যাবে (যেমন Sheet1) ডাটা খুঁজছেন? শিটের সব ট্যাব চেক করুন।
+৫. ইমেজ বা লোগো পরিবর্তন:
+-------------------------------------------------------
+- রুমের থাম্বনেইল বা টিমের লোগোর উপর ক্লিক করলে সরাসরি কম্পিউটার থেকে ছবি আপলোড করার অপশন পাবেন। এটি করার পর ডাটা অটোমেটিক ব্রাউজারে সেভ হয়ে যাবে।
 
-৩. ফোল্ডার আইডি (Folder ID) কোথায় পাবেন?
--------------------------------------
-গুগল ড্রাইভের সেই ফোল্ডারটি ওপেন করুন যেখানে লোগো জমা হবে। ব্রাউজারের অ্যাড্রেস বারে লিংকের শেষের অংশটিই হলো আইডি।
-যেমন: `drive.google.com/drive/folders/1abcde12345` -> এখানে `1abcde12345` হলো আইডি।
+সতর্কবার্তা: 
+-------------------------------------------------------
+আপনার ব্রাউজারের 'Clear Cache' বা 'Clear Site Data' করলে আপনার করা সব ডাটা ডিলিট হয়ে যেতে পারে। তাই গুরুত্বপূর্ণ ডাটাগুলো সবসময় ব্যাকআপ রাখবেন। দীর্ঘমেয়াদী এবং সবার জন্য ডাটা শেয়ারিং এর জন্য ভবিষ্যতে Firebase বা অন্য ডাটাবেস যুক্ত করে নেওয়া ভালো।
 
 ধন্যবাদ,
-GENIX Battle Tech Support
+GENIX Battle Team
