@@ -36,50 +36,53 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ১. ইউজার ডাটা এবং টিম চেক (লোডিং ফিক্স)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setCurrentUser(user);
-        
-        // Check if user is captain
-        const regDoc = await getDoc(doc(db, 'registrations', user.uid));
-        if (regDoc.exists()) {
-          const data = regDoc.data();
-          setUserRegistration(data);
-          setFormData(data as any);
-          setViewState('view_team');
-          
-          // Listen for join requests
-          const unsubRequests = onSnapshot(collection(db, `registrations/${user.uid}/requests`), (snapshot) => {
-            const reqs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            setJoinRequests(reqs);
-          });
-          return () => unsubRequests();
-        } else {
-          // Check if user is accepted member
-          const playerDoc = await getDoc(doc(db, 'users_membership', user.uid));
-          if (playerDoc.exists()) {
-            const membership = playerDoc.data();
-            if (membership.status === 'accepted') {
-              const teamDoc = await getDoc(doc(db, 'registrations', membership.teamId));
-              if (teamDoc.exists()) {
-                setUserRegistration(teamDoc.data());
-                setViewState('view_team');
+        try {
+          // ক্যাপ্টেন কিনা চেক
+          const regDoc = await getDoc(doc(db, 'registrations', user.uid));
+          if (regDoc.exists()) {
+            const data = regDoc.data();
+            setUserRegistration(data);
+            setFormData(data as any);
+            setViewState('view_team');
+            
+            // রিকোয়েস্ট শোনা শুরু
+            onSnapshot(collection(db, `registrations/${user.uid}/requests`), (snapshot) => {
+              const reqs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+              setJoinRequests(reqs);
+            });
+          } else {
+            // মেম্বার কিনা চেক
+            const memDoc = await getDoc(doc(db, 'users_membership', user.uid));
+            if (memDoc.exists()) {
+              const membership = memDoc.data();
+              if (membership.status === 'accepted') {
+                const teamDoc = await getDoc(doc(db, 'registrations', membership.teamId));
+                if (teamDoc.exists()) {
+                  setUserRegistration(teamDoc.data());
+                  setViewState('view_team');
+                }
               }
             }
           }
+        } catch (e) {
+          console.error("Auth check error", e);
         }
       } else {
         setCurrentUser(null);
         setViewState('choice');
       }
-      setInitialLoading(false);
+      setInitialLoading(false); // লোডিং বন্ধ
     });
     return () => unsubscribe();
   }, []);
 
+  // ২. সব টিমের লিস্ট লোড করা
   useEffect(() => {
-    setIsTeamsLoading(true);
     const unsubTeams = onSnapshot(collection(db, 'registrations'), (snapshot) => {
       const teams = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setAllTeams(teams);
@@ -88,6 +91,7 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     return () => unsubTeams();
   }, []);
 
+  // ৩. ইমেজ কমপ্রেশন (পারফরম্যান্স ফিক্স)
   const compressImage = (base64Str: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -102,7 +106,7 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
         canvas.width = width; canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) { ctx.imageSmoothingQuality = 'medium'; ctx.drawImage(img, 0, 0, width, height); }
-        resolve(canvas.toDataURL('image/jpeg', 0.6));
+        resolve(canvas.toDataURL('image/jpeg', 0.5));
       };
     });
   };
@@ -121,21 +125,21 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     }
   };
 
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
+  // ৪. সাবমিট লজিক
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
     
     if (!formData.teamName || !formData.teamLogo || !formData.captainName || !formData.player2Name || !formData.player3Name || !formData.player4Name) {
-      alert("Please fill required fields (P1-P4). P5 is optional.");
+      alert("Please fill P1 to P4 slots. Player 5 is optional.");
       return;
     }
 
     setIsLoading(true);
-    setError('');
     const payload = { 
       ...formData, 
       userUid: currentUser.uid, 
-      isApproved: userRegistration ? userRegistration.isApproved : false,
+      isApproved: userRegistration?.isApproved || false,
       timestamp: new Date().toISOString()
     };
 
@@ -145,9 +149,9 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       setUserRegistration(payload);
       setIsEditing(false);
       setViewState('view_team');
-      alert(userRegistration ? "Team updated!" : "Registration submitted! Waiting for admin approval.");
+      alert(userRegistration ? "Team updated!" : "Registration submitted! Admin approval pending.");
     } catch (err) {
-      setError('Connection failed.');
+      alert("Error saving data.");
     } finally {
       setIsLoading(false);
     }
@@ -174,13 +178,13 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       alert(`Request sent to captain for slot: ${playerName}.`);
       setViewState('choice');
     } catch (err) {
-      alert("Error sending request.");
+      alert("Error sending join request.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleApprovePlayer = async (req: any) => {
+  const handleApproveRequest = async (req: any) => {
     if (!currentUser || !userRegistration) return;
     try {
       await updateDoc(doc(db, `registrations/${currentUser.uid}/requests`, req.userId), { status: 'accepted' });
@@ -188,7 +192,7 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       const updatedTeam = { ...userRegistration, [`${req.slotKey}Uid`]: req.userId };
       await setDoc(doc(db, 'registrations', currentUser.uid), updatedTeam);
       setUserRegistration(updatedTeam);
-      alert("Player accepted into roster!");
+      alert("Player added to roster!");
     } catch (err) {
       alert("Error approving player.");
     }
@@ -201,7 +205,7 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       <div className="max-w-md mx-auto glass-card p-10 rounded-[40px] border-white/10">
         <Shield size={60} className="mx-auto mb-6 text-purple-500 opacity-50" />
         <h2 className="text-2xl font-black font-orbitron text-white uppercase italic mb-4">Registration Locked</h2>
-        <p className="text-gray-500 mb-8 text-sm uppercase font-bold tracking-widest">Sign in to join the tournament</p>
+        <p className="text-gray-500 mb-8 text-sm uppercase font-bold tracking-widest italic">Sign in to access tournament registration</p>
         <button onClick={() => navigate('/login')} className="inline-flex items-center space-x-2 px-8 py-4 bg-purple-600 rounded-2xl text-white font-black uppercase text-xs tracking-widest hover:bg-purple-700 transition-all">
           <span>Login</span> <ArrowRight size={16} />
         </button>
@@ -209,17 +213,17 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     </div>
   );
 
-  // --- Initial Choice View ---
+  // --- Choice View ---
   if (viewState === 'choice') {
     return (
-      <div className="py-20 px-4 max-w-4xl mx-auto">
+      <div className="py-20 px-4 max-w-4xl mx-auto animate-in fade-in">
         <div className="text-center mb-16">
           <h2 className="font-orbitron text-5xl font-black italic text-white uppercase tracking-tighter italic">Arena Entry</h2>
-          <p className="text-gray-500 font-bold uppercase tracking-widest mt-2 italic">Select your path to glory</p>
+          <p className="text-gray-500 font-bold uppercase tracking-widest mt-2 italic">Select Registration Mode</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <ChoiceCard title="Register New Team" desc="For Captains. Create a new roster and upload team logo. Requires moderation." icon={<Shield size={40}/>} onClick={() => setViewState('register')} primary />
-          <ChoiceCard title="Join Existing Team" desc="For Players. Find your squad and request to join an open slot." icon={<UserPlus size={40}/>} onClick={() => setViewState('join_list')} />
+          <ChoiceCard title="Register New Team" desc="For Captains. Create a new roster and upload team logo (Moderation required)." icon={<Shield size={40}/>} onClick={() => setViewState('register')} primary />
+          <ChoiceCard title="Join Existing Team" desc="For Players. Search for your team and request to join an available slot." icon={<UserPlus size={40}/>} onClick={() => setViewState('join_list')} />
         </div>
       </div>
     );
@@ -231,28 +235,23 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     return (
       <div className="py-12 px-4 max-w-5xl mx-auto animate-in fade-in">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
-          <div>
-            <button onClick={() => setViewState('choice')} className="text-[10px] font-black uppercase text-purple-400 mb-2 hover:underline">← Back</button>
-            <h2 className="font-orbitron text-3xl font-black text-white uppercase italic">Active Roster Search</h2>
-          </div>
+          <button onClick={() => setViewState('choice')} className="text-[10px] font-black uppercase text-purple-400 mb-2 hover:underline">← Back to Options</button>
           <div className="relative w-full md:w-80">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18}/>
             <input type="text" placeholder="Search Team..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-white text-sm focus:border-purple-500 transition-all font-semibold" />
           </div>
         </div>
         {isTeamsLoading ? (
-          <div className="py-20 flex flex-col items-center"><Loader2 size={40} className="animate-spin text-purple-500" /></div>
+          <div className="py-20 flex justify-center"><Loader2 size={40} className="animate-spin text-purple-500" /></div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {filteredTeams.map(team => (
-              <div key={team.id} className="glass-card p-6 rounded-[32px] border-white/10 hover:border-purple-500/30 transition-all group">
+              <div key={team.id} className="glass-card p-6 rounded-[32px] border-white/10 hover:border-purple-500/30 transition-all">
                 <div className="flex items-center space-x-4 mb-6">
-                  <div className="w-16 h-16 rounded-2xl bg-black/50 border border-white/10 overflow-hidden shrink-0">
-                    <img src={team.teamLogo || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" />
-                  </div>
+                  <img src={team.teamLogo || 'https://via.placeholder.com/150'} className="w-16 h-16 rounded-2xl object-cover bg-black/50" />
                   <div>
                     <h3 className="text-xl font-black text-white uppercase italic tracking-tight">{team.teamName}</h3>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase">{team.isApproved ? 'Verified Team' : 'Pending Verification'}</p>
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">{team.isApproved ? 'Verified' : 'Pending'}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -263,10 +262,8 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
                      return (
                        <div key={key} className="flex items-center justify-between p-3 bg-black/30 rounded-xl border border-white/5">
                          <span className="text-xs font-bold text-gray-300 italic">{pName}</span>
-                         {pUid ? (
-                           <span className="text-[8px] font-black text-gray-600 uppercase">Slot Taken</span>
-                         ) : (
-                           <button onClick={() => handleJoinRequest(team.id, pName, key)} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-[9px] font-black uppercase text-white shadow-lg">Request Join</button>
+                         {pUid ? <span className="text-[8px] font-black text-gray-600 uppercase">Taken</span> : (
+                           <button onClick={() => handleJoinRequest(team.id, pName, key)} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-[9px] font-black uppercase text-white shadow-lg">Join Slot</button>
                          )}
                        </div>
                      );
@@ -280,32 +277,30 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     );
   }
 
-  // --- Dashboard / My Team View ---
+  // --- My Team View ---
   if (viewState === 'view_team' && userRegistration && !isEditing) {
     const isCaptain = currentUser.uid === userRegistration.userUid;
     return (
       <div className="py-12 px-4 max-w-5xl mx-auto animate-in fade-in">
         <div className="glass-card rounded-[40px] border-white/10 overflow-hidden shadow-2xl">
           <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 p-8 md:p-12 flex flex-col md:flex-row items-center gap-8 border-b border-white/10">
-            <div className="w-40 h-40 rounded-[32px] bg-black/50 border-4 border-purple-500/30 overflow-hidden shrink-0 shadow-2xl">
-              <img src={userRegistration.teamLogo || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" />
-            </div>
+            <img src={userRegistration.teamLogo || 'https://via.placeholder.com/150'} className="w-40 h-40 rounded-[32px] border-4 border-purple-500/30 object-cover shadow-2xl" />
             <div className="text-center md:text-left flex-grow">
-              <div className="flex flex-col md:flex-row md:items-center gap-3 mb-2">
-                <h3 className="text-4xl font-black font-orbitron text-white uppercase italic tracking-tighter">{userRegistration.teamName}</h3>
+              <h3 className="text-4xl font-black font-orbitron text-white uppercase italic tracking-tighter mb-2">{userRegistration.teamName}</h3>
+              <div className="flex flex-wrap justify-center md:justify-start gap-2">
                 {userRegistration.isApproved ? (
-                  <span className="inline-flex items-center space-x-1 px-3 py-1 bg-green-500/20 border border-green-500/50 rounded-full text-[10px] text-green-400 font-black uppercase italic"><CheckCircle size={12}/> <span>Verified</span></span>
+                  <span className="px-3 py-1 bg-green-500/20 border border-green-500/50 rounded-full text-[10px] text-green-400 font-black uppercase italic"><CheckCircle size={12} className="inline mr-1"/> Verified Team</span>
                 ) : (
-                  <span className="inline-flex items-center space-x-1 px-3 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded-full text-[10px] text-yellow-400 font-black uppercase italic"><Clock size={12}/> <span>Pending Approval</span></span>
+                  <span className="px-3 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded-full text-[10px] text-yellow-400 font-black uppercase italic"><Clock size={12} className="inline mr-1"/> Approval Pending</span>
                 )}
+                <span className="px-3 py-1 bg-blue-500/20 border border-blue-500/50 rounded-full text-[10px] text-blue-400 font-black uppercase italic">{userRegistration.teamEmail}</span>
               </div>
-              <p className="text-blue-400 font-bold uppercase tracking-widest text-xs">{userRegistration.teamEmail}</p>
             </div>
           </div>
           
           <div className="p-8 md:p-12 grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
-              <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Roster Composition</h4>
+              <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Team Roster</h4>
               <div className="space-y-3">
                 <RosterRow name={userRegistration.captainName} role="Captain" uid={userRegistration.captainUid} active />
                 <RosterRow name={userRegistration.player2Name} role="P2" uid={userRegistration.player2Uid} active={!!userRegistration.player2Uid} />
@@ -324,17 +319,17 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
                       <div key={req.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
                         <div>
                           <p className="text-sm font-black text-white italic">{req.playerName}</p>
-                          <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">User: {req.userName}</p>
+                          <p className="text-[10px] text-gray-500 font-bold uppercase">Requester: {req.userName}</p>
                         </div>
                         <div className="flex space-x-2">
-                           <button onClick={() => handleApprovePlayer(req)} className="p-2 bg-green-600/20 text-green-500 rounded-lg hover:bg-green-600 hover:text-white transition-all"><Check size={16}/></button>
+                           <button onClick={() => handleApproveRequest(req)} className="p-2 bg-green-600/20 text-green-500 rounded-lg hover:bg-green-600 hover:text-white transition-all"><Check size={16}/></button>
                            <button className="p-2 bg-red-600/20 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all"><X size={16}/></button>
                         </div>
                       </div>
                     ))
                   ) : (
                     <div className="py-10 text-center border border-dashed border-white/5 rounded-2xl">
-                       <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">No active requests</p>
+                       <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic">No pending requests</p>
                     </div>
                   )}
                 </div>
@@ -344,11 +339,11 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
 
           <div className="p-8 bg-white/2 border-t border-white/5 flex flex-col md:flex-row gap-4">
             {isCaptain && (
-              <button onClick={() => setIsEditing(true)} className="flex-grow flex items-center justify-center space-x-3 py-4 bg-purple-600 hover:bg-purple-700 rounded-2xl text-white font-black uppercase text-xs shadow-xl shadow-purple-600/20">
-                <Edit3 size={18} /> <span>Modify Roster Details</span>
+              <button onClick={() => setIsEditing(true)} className="flex-grow flex items-center justify-center space-x-3 py-4 bg-purple-600 hover:bg-purple-700 rounded-2xl text-white font-black uppercase text-xs shadow-xl shadow-purple-600/20 transition-all">
+                <Edit3 size={18} /> <span>Edit Team Info</span>
               </button>
             )}
-            <button onClick={() => navigate('/teams')} className="flex-grow flex items-center justify-center space-x-3 py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-gray-400 border border-white/10 font-black uppercase text-xs">
+            <button onClick={() => navigate('/teams')} className="flex-grow flex items-center justify-center space-x-3 py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-gray-400 border border-white/10 font-black uppercase text-xs transition-all">
               <Eye size={18} /> <span>Verified Squads</span>
             </button>
           </div>
@@ -357,66 +352,60 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     );
   }
 
-  // --- Register Form ---
+  // --- Form View ---
   return (
     <div className="py-12 px-4 md:px-8 max-w-5xl mx-auto animate-in fade-in">
-       <button onClick={() => userRegistration ? setViewState('view_team') : setViewState('choice')} className="text-[10px] font-black uppercase text-purple-400 mb-6 hover:underline flex items-center space-x-1">
-         <span>← Cancel Operation</span>
-       </button>
+       <button onClick={() => userRegistration ? setViewState('view_team') : setViewState('choice')} className="text-[10px] font-black uppercase text-purple-400 mb-6 hover:underline">← Cancel Registration</button>
        <div className="text-center mb-12">
-        <h2 className="font-orbitron text-5xl font-black italic mb-4 text-white uppercase tracking-tighter">Squad Genesis</h2>
-        <p className="text-gray-500 font-bold uppercase tracking-widest italic">P1-P4 slots required. P5 is optional.</p>
+        <h2 className="font-orbitron text-5xl font-black italic mb-4 text-white uppercase tracking-tighter italic">Squad Entry</h2>
+        <p className="text-gray-500 font-bold uppercase tracking-widest italic italic">P1-P4 Required | P5 Optional</p>
       </div>
 
       <div className="glass-card p-8 md:p-12 rounded-[40px] border-white/10">
-        <form onSubmit={handleRegisterSubmit} className="space-y-10">
+        <form onSubmit={handleSubmit} className="space-y-10 text-left">
           <div className="flex flex-col items-center space-y-4">
             <div className="relative group cursor-pointer" onClick={() => !isProcessingImage && fileInputRef.current?.click()}>
               <div className={`w-36 h-36 rounded-[32px] border-2 border-dashed flex items-center justify-center overflow-hidden transition-all ${formData.teamLogo ? 'border-purple-500' : 'border-white/20 hover:border-purple-500'}`}>
                 {isProcessingImage ? <Loader2 size={32} className="animate-spin text-purple-400" /> : 
                  formData.teamLogo ? <img src={formData.teamLogo} className="w-full h-full object-cover" /> : 
-                 <div className="text-center p-4">
-                   <Camera size={32} className="text-gray-500 mx-auto mb-2" />
-                   <span className="text-[8px] font-black text-gray-600 uppercase">Logo Upload</span>
-                 </div>}
+                 <div className="text-center p-4"><Camera size={32} className="text-gray-500 mx-auto mb-2" /><span className="text-[8px] font-black text-gray-600 uppercase">Upload Logo</span></div>}
               </div>
               <input type="file" ref={fileInputRef} onChange={handleLogoUpload} className="hidden" accept="image/*" />
             </div>
-            <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest text-center italic">Image auto-compressed below 1MB</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <InputGroup label="Team Name *" value={formData.teamName} onChange={(v: string) => setFormData({...formData, teamName: v})} placeholder="GENIX SQUAD" />
+            <InputGroup label="Team Name *" value={formData.teamName} onChange={(v: string) => setFormData({...formData, teamName: v})} placeholder="GENIX BATTLE" />
             <InputGroup label="Official Email *" value={formData.teamEmail} onChange={(v: string) => setFormData({...formData, teamEmail: v})} placeholder="captain@mail.com" />
-            <InputGroup label="WhatsApp No *" value={formData.phone} onChange={(v: string) => setFormData({...formData, phone: v})} placeholder="+8801XXXXXXXXX" />
-            <InputGroup label="Captain Name *" value={formData.captainFullName} onChange={(v: string) => setFormData({...formData, captainFullName: v})} placeholder="Full Name" />
+            <InputGroup label="WhatsApp Number *" value={formData.phone} onChange={(v: string) => setFormData({...formData, phone: v})} placeholder="+8801XXXXXXXXX" />
+            <InputGroup label="Captain Full Name *" value={formData.captainFullName} onChange={(v: string) => setFormData({...formData, captainFullName: v})} placeholder="Real Name" />
           </div>
 
           <div className="space-y-6 pt-10 border-t border-white/5">
-             <h3 className="text-purple-400 font-black uppercase tracking-[0.3em] text-[10px] italic">Athlete Assignment (5 total slots)</h3>
+             <h3 className="text-purple-400 font-black uppercase tracking-[0.3em] text-[10px] italic">Athlete Assignments</h3>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="p-6 bg-purple-600/5 rounded-3xl border border-purple-500/20 space-y-4 md:col-span-2">
-                   <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest">P1 Captain Entry</p>
+                   <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest">P1 Captain (Me)</p>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <InputGroup label="Captain IGN *" value={formData.captainName} onChange={(v: string) => setFormData({...formData, captainName: v})} placeholder="IGN" />
-                      <InputGroup label="Captain UID *" value={formData.captainUid} onChange={(v: string) => setFormData({...formData, captainUid: v})} placeholder="UID" />
+                      <InputGroup label="In-Game Name *" value={formData.captainName} onChange={(v: string) => setFormData({...formData, captainName: v})} placeholder="IGN" />
+                      <InputGroup label="Free Fire UID *" value={formData.captainUid} onChange={(v: string) => setFormData({...formData, captainUid: v})} placeholder="UID" />
                    </div>
                 </div>
                 {[2, 3, 4].map(num => (
                    <div key={num} className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
-                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Player {num} Assignment *</p>
+                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest italic">Player {num} (P{num}) *</p>
                       <InputGroup label={`P${num} In-Game Name`} value={(formData as any)[`player${num}Name`]} onChange={(v: string) => setFormData({...formData, [`player${num}Name`]: v})} placeholder="IGN" />
                    </div>
                 ))}
                 <div className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
-                   <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic">Player 5 Assignment (Optional)</p>
+                   <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic">Player 5 (Substitute) [OPTIONAL]</p>
                    <InputGroup label="P5 Sub IGN" value={formData.player5Name} onChange={(v: string) => setFormData({...formData, player5Name: v})} placeholder="Optional IGN" />
                 </div>
              </div>
           </div>
 
-          <button type="submit" disabled={isLoading || isProcessingImage} className="w-full py-5 bg-purple-600 hover:bg-purple-700 rounded-2xl font-black font-orbitron text-lg uppercase tracking-widest text-white italic flex items-center justify-center shadow-xl shadow-purple-600/20">
-            {isLoading ? <Loader2 className="animate-spin" /> : <span>{isEditing ? 'Confirm Update' : 'Initialize Squad'}</span>}
+          <button type="submit" disabled={isLoading || isProcessingImage} className="w-full py-5 bg-purple-600 hover:bg-purple-700 rounded-2xl font-black font-orbitron text-lg uppercase tracking-widest text-white italic flex items-center justify-center shadow-xl shadow-purple-600/20 transition-all">
+            {isLoading ? <Loader2 className="animate-spin" /> : <span>{isEditing ? 'Confirm Updates' : 'Submit Registration'}</span>}
           </button>
         </form>
       </div>
@@ -443,7 +432,7 @@ const RosterRow = ({ name, role, uid, active }: any) => (
 );
 
 const InputGroup = ({ label, value, onChange, placeholder }: any) => (
-  <div className="flex flex-col space-y-2 text-left">
+  <div className="flex flex-col space-y-2 text-left w-full">
     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</label>
     <input 
       type="text" 
