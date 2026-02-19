@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { LogIn, Shield, LayoutGrid, List, Users, Trophy, Menu, X, MessageSquare, AlertCircle, UserCircle, LogOut } from 'lucide-react';
+import { LogIn, Shield, LayoutGrid, List, Users, Trophy, Menu, X, MessageSquare, AlertCircle, UserCircle, LogOut, Zap } from 'lucide-react';
 import { AppData, UserProfile } from './types';
 import { INITIAL_DATA } from './data';
 import { auth, db, onAuthStateChanged, doc, getDoc, onSnapshot, signOut } from './firebase';
@@ -49,27 +49,17 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: UserPro
     return () => unsubReg();
   }, [currentUser]);
 
-  const handleNav = (to: string) => {
-    navigate(to);
+  const handleNav = (to: string, state?: any) => {
+    navigate(to, { state });
     setIsMenuOpen(false);
     window.scrollTo(0, 0);
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setIsMenuOpen(false);
-      navigate('/login');
-    } catch (error) {
-      console.error("Logout error:", error);
-    }
-  };
-
-  const NavLink = ({ to, children, icon: Icon }: { to: string; children?: React.ReactNode; icon: any }) => {
-    const isActive = location.pathname === to;
+  const NavLink = ({ to, children, icon: Icon, state }: { to: string; children?: React.ReactNode; icon: any; state?: any }) => {
+    const isActive = location.pathname === to && (!state || location.state?.openTasks === state?.openTasks);
     return (
       <button 
-        onClick={() => handleNav(to)}
+        onClick={() => handleNav(to, state)}
         className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all w-full lg:w-auto ${
           isActive 
             ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' 
@@ -154,13 +144,16 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: UserPro
                <NavLink to="/points" icon={Trophy}>Points</NavLink>
                <NavLink to="/rules" icon={List}>Rules</NavLink>
                <NavLink to="/contact" icon={MessageSquare}>Contact</NavLink>
+               {currentUser && (
+                 <NavLink to="/profile" icon={Zap} state={{ openTasks: true }}>Tasks</NavLink>
+               )}
                {isAdminOrAbove && <NavLink to="/admin" icon={Shield}>Admin CP</NavLink>}
              </div>
 
              {currentUser && (
                <div className="mt-auto pt-6 border-t border-white/10">
                  <button 
-                   onClick={handleLogout}
+                   onClick={async () => { await signOut(auth); navigate('/login'); setIsMenuOpen(false); }}
                    className="flex items-center space-x-3 px-5 py-4 rounded-2xl transition-all w-full bg-red-600/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white group"
                  >
                    <LogOut size={18} className="group-hover:rotate-12 transition-transform" />
@@ -215,7 +208,10 @@ const App: React.FC = () => {
               role: data.role || 'player',
               position: data.position,
               specialBadges: data.specialBadges || [],
-              teamId: data.teamId
+              teamId: data.teamId,
+              level: data.level || 1,
+              exp: data.exp || 0,
+              dailyAdsCount: data.dailyAdsCount || 0
             });
           } else {
              setCurrentUser({

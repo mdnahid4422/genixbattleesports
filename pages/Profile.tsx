@@ -1,9 +1,11 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { UserProfile, SpecialBadge, PlayerPosition, UserRole } from '../types';
-import { Camera, Loader2, Save, LogOut, CheckCircle2, Shield, Target, Trophy, Award, Zap, Star, ArrowLeft, UserPlus, XCircle } from 'lucide-react';
-import { db, doc, updateDoc, auth, signOut, onSnapshot, setDoc } from '../firebase';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { UserProfile, SpecialBadge, Team } from '../types';
+import { Camera, Loader2, Save, LogOut, CheckCircle2, Shield, Target, Trophy, Award, Zap, ArrowLeft, UserPlus, XCircle, Edit3, X, User as UserIcon, IdCard, Users, Sparkles, ChevronRight, Share2, Heart, Star } from 'lucide-react';
+import { db, doc, onSnapshot, getDoc, updateDoc, setDoc, auth, signOut } from '../firebase';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import EvolutionHub from '../components/EvolutionHub';
+import { getRequiredExpForLevel } from '../adSystem';
 
 interface ProfileProps {
   user: UserProfile | null;
@@ -11,29 +13,52 @@ interface ProfileProps {
 
 const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
   const { uid: routeUid } = useParams<{ uid: string }>();
+  const location = useLocation();
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
-  const [fullName, setFullName] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [teamData, setTeamData] = useState<Team | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isEvolutionModalOpen, setIsEvolutionModalOpen] = useState(false);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  
+  const [editName, setEditName] = useState('');
+  const [editBio, setEditBio] = useState('');
+  
   const [fetching, setFetching] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const isOwnProfile = !routeUid || routeUid === loggedInUser?.uid;
 
   useEffect(() => {
-    let effectiveUid = routeUid || loggedInUser?.uid;
-    
-    if (!effectiveUid) {
-      setFetching(false);
-      return;
+    if (isOwnProfile && location.state?.openTasks) {
+      setIsEvolutionModalOpen(true);
+      window.history.replaceState({}, document.title);
     }
+  }, [location.state, isOwnProfile]);
+
+  useEffect(() => {
+    let effectiveUid = routeUid || loggedInUser?.uid;
+    if (!effectiveUid) { setFetching(false); return; }
 
     const unsub = onSnapshot(doc(db, 'users', effectiveUid), async (snap) => {
       if (snap.exists()) {
         const data = snap.data() as UserProfile;
-        setProfileData({ ...data, uid: snap.id });
-        setFullName(data.fullName || '');
+        const updatedData = {
+          ...data,
+          uid: snap.id,
+          level: data.level || 1,
+          exp: data.exp || 0,
+          totalExp: data.totalExp || 0,
+          dailyAdsCount: data.dailyAdsCount || 0
+        };
+        setProfileData(updatedData);
+        setEditName(data.fullName || '');
+        setEditBio(data.bio || '');
+
+        if (data.teamId) {
+          const teamSnap = await getDoc(doc(db, 'registrations', data.teamId));
+          if (teamSnap.exists()) setTeamData({ id: teamSnap.id, ...teamSnap.data() } as Team);
+        } else { setTeamData(null); }
         setFetching(false);
       } else {
         if (isOwnProfile && auth.currentUser) {
@@ -42,289 +67,171 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
             email: auth.currentUser.email || '',
             fullName: auth.currentUser.displayName || 'New Player',
             photoURL: auth.currentUser.photoURL || undefined,
-            role: 'player'
+            role: 'player',
+            totalKills: 0,
+            bio: 'Elite Player @ GENIX Battle',
+            level: 1,
+            exp: 0,
+            totalExp: 0,
+            dailyAdsCount: 0
           };
-          try {
-            await setDoc(doc(db, 'users', auth.currentUser.uid), newProfile);
-          } catch (err) {
-            console.error("Error auto-creating profile:", err);
-            setProfileData(null);
-            setFetching(false);
-          }
-        } else {
-          setProfileData(null);
-          setFetching(false);
-        }
+          await setDoc(doc(db, 'users', auth.currentUser.uid), newProfile);
+        } else { setProfileData(null); setFetching(false); }
       }
-    }, (err) => {
-      console.error("Profile fetch error:", err);
-      setFetching(false);
-    });
+    }, () => setFetching(false));
 
     return () => unsub();
   }, [routeUid, loggedInUser, isOwnProfile]);
 
-  if (fetching) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center">
-        <div className="relative">
-           <Loader2 size={48} className="animate-spin text-purple-500 mb-4" />
-           <div className="absolute inset-0 blur-xl bg-purple-500/20 animate-pulse"></div>
-        </div>
-        <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] italic">Accessing Operative Files...</p>
-      </div>
-    );
-  }
+  const handleLogout = async () => { try { await signOut(auth); navigate('/login'); } catch (err) {} };
 
-  if (!profileData) {
-    return (
-      <div className="py-20 px-4 text-center max-w-md mx-auto animate-in zoom-in">
-        <div className="glass-card p-10 rounded-[40px] border-red-500/20">
-          <XCircle size={60} className="text-red-500 mx-auto mb-6 opacity-40" />
-          <h2 className="text-2xl font-black text-white uppercase italic mb-4">Profile Missing</h2>
-          <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-8 leading-relaxed">
-            এই প্লেয়ারের কোনো তথ্য পাওয়া যায়নি। হয়তো তিনি এখনো প্রোফাইল আপডেট করেননি।
-          </p>
-          <button onClick={() => navigate(-1)} className="w-full py-4 bg-white/5 border border-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all">Go Back</button>
-        </div>
-      </div>
-    );
-  }
+  if (fetching) return <div className="min-h-[60vh] flex flex-col items-center justify-center"><Loader2 size={48} className="animate-spin text-purple-500 mb-4" /><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic">Syncing Operative Profile...</p></div>;
+  if (!profileData) return <div className="py-20 text-center"><XCircle size={60} className="text-red-500 mx-auto mb-6 opacity-40" /><h2 className="text-2xl font-black text-white uppercase italic mb-4">Identity Not Found</h2><button onClick={() => navigate(-1)} className="px-10 py-4 bg-white/5 text-white rounded-2xl text-[10px] font-black uppercase">Go Back</button></div>;
 
-  const compressImage = (base64Str: string): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.src = base64Str;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_DIM = 400; 
-        let width = img.width, height = img.height;
-        if (width > height) { if (width > MAX_DIM) { height *= MAX_DIM / width; width = MAX_DIM; } }
-        else { if (height > MAX_DIM) { width *= MAX_DIM / height; height = MAX_DIM; } }
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) { ctx.imageSmoothingQuality = 'medium'; ctx.drawImage(img, 0, 0, width, height); }
-        resolve(canvas.toDataURL('image/jpeg', 0.6));
-      };
-    });
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isOwnProfile) return;
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploading(true);
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const compressed = await compressImage(reader.result as string);
-        try {
-          await updateDoc(doc(db, 'users', profileData.uid), { photoURL: compressed });
-        } catch (err) {
-          alert("Upload failed. Check permissions.");
-        }
-        setUploading(false);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSaveName = async () => {
-    if (!fullName || !isOwnProfile) return;
-    setLoading(true);
-    try {
-      await updateDoc(doc(db, 'users', profileData.uid), { fullName });
-      alert("Name updated!");
-    } catch (err) {
-      alert("Failed to update name.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    if (window.confirm("আপনি কি নিশ্চিতভাবে লগ আউট করতে চান?")) {
-      await signOut(auth);
-      navigate('/login');
-    }
-  };
+  const requiredExp = getRequiredExpForLevel(profileData.level || 1);
+  const expPercentage = ((profileData.exp || 0) / requiredExp) * 100;
 
   return (
-    <div className="py-12 px-4 md:px-8 max-w-4xl mx-auto min-h-screen animate-in fade-in duration-700">
-      <div className="flex items-center gap-5 mb-12">
-        <button onClick={() => navigate(-1)} className="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-xl"><ArrowLeft size={20}/></button>
-        <div className="flex flex-col">
-           <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] italic leading-none">{isOwnProfile ? 'Control Center' : 'Operative Profile'}</h4>
-           <div className="flex items-center gap-2 mt-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <p className="text-[8px] font-bold text-purple-400 uppercase tracking-widest">Protocol: Online</p>
-           </div>
+    <div className="py-12 px-4 md:px-8 max-w-5xl mx-auto min-h-screen animate-in fade-in duration-700">
+      <div className="flex items-center justify-between mb-12">
+        <div className="flex items-center gap-5">
+          <button onClick={() => navigate(-1)} className="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all shadow-xl"><ArrowLeft size={20}/></button>
+          <div className="flex flex-col">
+            <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] italic leading-none">Operative Identity</h4>
+            <div className="flex items-center gap-2 mt-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#22c55e] animate-pulse"></div>
+              <p className="text-[8px] font-black text-purple-400 uppercase">Operational Status: Online</p>
+            </div>
+          </div>
         </div>
+        {isOwnProfile && <button onClick={() => setIsEditModalOpen(true)} className="px-6 py-4 bg-purple-600 text-white border border-purple-500/30 rounded-[24px] font-black uppercase text-[10px] tracking-[0.2em] flex items-center gap-3 hover:scale-105 transition-all shadow-xl shadow-purple-600/20"><Edit3 size={16} /> Edit Identity</button>}
       </div>
 
-      <div className="glass-card rounded-[48px] border-white/10 overflow-hidden shadow-2xl relative animate-in slide-in-from-bottom duration-500">
-        <div className="h-48 bg-gradient-to-r from-purple-900/40 via-blue-900/40 to-purple-900/40 relative overflow-hidden">
-           <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #8b5cf6 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+      <div className="glass-card rounded-[48px] border-white/10 overflow-hidden shadow-2xl relative">
+        <div className="h-56 bg-gradient-to-r from-purple-900/60 via-blue-900/40 to-purple-900/60 relative">
+          <div className="absolute inset-0 bg-gradient-to-t from-[#060608] to-transparent"></div>
         </div>
         
         <div className="px-8 pb-12 -mt-24 relative z-10">
-          <div className="flex flex-col md:flex-row items-center md:items-end gap-8 mb-16">
-            <div className="relative group">
-              <div className="w-44 h-44 rounded-[48px] border-8 border-[#060608] bg-[#060608] overflow-hidden shadow-2xl relative group-hover:scale-105 transition-transform duration-500">
-                {uploading && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
-                    <Loader2 size={32} className="animate-spin text-purple-400" />
-                  </div>
-                )}
+          <div className="flex flex-col md:flex-row items-center md:items-end gap-10 mb-12">
+            <div className="relative">
+              <div className="w-48 h-48 rounded-[52px] border-[10px] border-[#060608] bg-[#0b0b0e] overflow-hidden shadow-2xl relative group">
                 <img src={profileData.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileData.uid}`} className="w-full h-full object-cover" alt="Profile" />
-                {isOwnProfile && (
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                  >
-                    <Camera size={28} className="text-white" />
-                  </button>
-                )}
+                {isOwnProfile && <button onClick={() => setIsEditModalOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Camera size={32} className="text-white" /></button>}
               </div>
-              <input type="file" ref={fileInputRef} onChange={handleImageUpload} className="hidden" accept="image/*" />
+              <div className="absolute -bottom-2 -right-2 bg-blue-600 p-2.5 rounded-2xl border-4 border-[#060608] shadow-lg"><CheckCircle2 size={24} className="text-white" /></div>
             </div>
             
             <div className="text-center md:text-left flex-grow">
-               <div className="flex items-center justify-center md:justify-start gap-4 mb-2">
-                 <h2 className="font-orbitron text-4xl md:text-5xl font-black italic text-white uppercase tracking-tighter neon-text-purple">{profileData.fullName}</h2>
-                 <CheckCircle2 size={24} className="text-blue-400 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-               </div>
-               <p className="text-gray-500 font-bold uppercase tracking-[0.4em] text-[10px] italic">Verified Operative Identity #{profileData.uid.slice(0, 8)}</p>
+               <h2 className="font-orbitron text-5xl md:text-6xl font-black italic text-white uppercase tracking-tighter neon-text-purple leading-tight mb-2">{profileData.fullName}</h2>
+               
+               <button onClick={() => isOwnProfile && setIsEvolutionModalOpen(true)} className={`flex flex-col md:items-start items-center gap-3 mb-6 p-2 -ml-2 rounded-2xl transition-all ${isOwnProfile ? 'hover:bg-white/5' : ''}`}>
+                  <div className="flex items-center gap-4">
+                     <div className="flex items-center gap-2 bg-purple-600 px-4 py-1.5 rounded-xl shadow-[0_0_15px_rgba(139,92,246,0.4)] border border-purple-400/30">
+                        <Award size={14} className="text-white" />
+                        <span className="text-[12px] font-black text-white italic uppercase tracking-tighter">Level {profileData.level}</span>
+                     </div>
+                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic flex items-center gap-2">{profileData.exp} / {requiredExp} EXP {isOwnProfile && <Zap size={10} className="text-yellow-500 animate-pulse" />}</span>
+                  </div>
+                  <div className="w-full max-w-sm h-2 bg-white/5 rounded-full overflow-hidden border border-white/5 shadow-inner">
+                     <div className="h-full bg-gradient-to-r from-purple-500 via-blue-500 to-purple-400 transition-all duration-1000 shadow-[0_0_12px_rgba(139,92,246,0.6)] relative" style={{ width: `${expPercentage}%` }}><div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div></div>
+                  </div>
+               </button>
+               <p className="text-gray-500 font-black uppercase tracking-[0.3em] text-[10px] italic flex items-center justify-center md:justify-start gap-2"><IdCard size={12} className="text-purple-500" /> #{profileData.uid.slice(0, 10).toUpperCase()}</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-4">
+              <StatPlate label="Elims" value={profileData.totalKills || 0} icon={<Target size={14}/>} color="from-red-600/20 to-red-900/20 text-red-400" border="border-red-500/30" />
+              <StatPlate label="Total EXP" value={profileData.totalExp || 0} icon={<Zap size={14}/>} color="from-yellow-600/20 to-yellow-900/20 text-yellow-400" border="border-yellow-500/30" />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-             <div className="space-y-10">
-                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Achievement Matrix</h4>
-                <div className="space-y-4">
-                   <BadgeItem 
-                     type="admin" 
-                     icon={<Shield size={18}/>} 
-                     label={profileData.role} 
-                     color={profileData.role === 'owner' ? 'from-red-600 to-orange-600' : profileData.role === 'admin' ? 'from-purple-600 to-blue-600' : profileData.role === 'moderator' ? 'from-yellow-600 to-orange-500' : 'from-gray-600 to-slate-700'} 
-                   />
-                   
-                   <BadgeItem 
-                     type="position" 
-                     icon={<Target size={18}/>} 
-                     label={profileData.position || 'Recruit'} 
-                     color="from-blue-600 to-cyan-600" 
-                     active={!!profileData.position}
-                   />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+            <div className="lg:col-span-7 space-y-10">
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Operative Bio</h4>
+                <div className="p-8 bg-white/5 border border-white/10 rounded-[32px] shadow-inner"><p className="text-gray-300 font-medium italic leading-relaxed">{profileData.bio || "Bio protocols not initialized."}</p></div>
+              </div>
 
-                   <div className="grid grid-cols-2 gap-4">
-                      {profileData.specialBadges && profileData.specialBadges.length > 0 ? profileData.specialBadges.map(b => (
-                        <SpecialBadgeItem key={b} label={b} />
-                      )) : (
-                        <div className="col-span-full py-6 text-center border border-dashed border-white/10 rounded-3xl text-[9px] font-black uppercase text-gray-600 italic">No Special Badges Authorized</div>
-                      )}
-                   </div>
+              <div className="space-y-6">
+                <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">Achievement Matrix</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <BadgeItem icon={<Shield size={18}/>} label={profileData.role} color={profileData.role === 'owner' ? 'from-red-600' : 'from-purple-600'} />
+                  <BadgeItem icon={<Award size={18}/>} label={profileData.position || 'Recruit'} color="from-blue-500" />
                 </div>
-             </div>
-
-             {isOwnProfile && (
-               <div className="space-y-10">
-                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">Update Protocols</h4>
-                  <div className="p-8 md:p-10 bg-white/5 rounded-[40px] border border-white/10 space-y-8 shadow-inner">
-                     <div className="space-y-3">
-                       <label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">Public Operational Name</label>
-                       <input 
-                         type="text" 
-                         value={fullName} 
-                         onChange={e => setFullName(e.target.value)} 
-                         className="w-full bg-black/50 border border-white/10 rounded-[24px] p-5 text-white text-sm font-bold focus:border-purple-500 outline-none transition-all shadow-inner"
-                         placeholder="আপনার পূর্ণ নাম"
-                       />
-                     </div>
-                     <button 
-                       onClick={handleSaveName} 
-                       disabled={loading}
-                       className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-purple-600/30 hover:bg-purple-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 italic"
-                     >
-                       {loading ? <Loader2 size={18} className="animate-spin" /> : <><Save size={18}/> Save Protocol Changes</>}
-                     </button>
-                  </div>
-               </div>
-             )}
-
-             {!isOwnProfile && (
-               <div className="space-y-10">
-                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-green-500 pl-4 italic">Operative Summary</h4>
-                  <div className="p-10 bg-white/5 rounded-[40px] border border-white/10 flex flex-col items-center justify-center text-center space-y-6">
-                     <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center shadow-inner">
-                        <Trophy size={48} className="text-yellow-500 opacity-60" />
-                     </div>
-                     <p className="text-sm font-bold text-gray-400 italic leading-relaxed max-w-xs">এই প্লেয়ারটি বর্তমানে GENIX Battle-এর একজন ভেরিফাইড মেম্বার হিসেবে আমাদের প্ল্যাটফর্মে যুক্ত আছেন।</p>
-                  </div>
-               </div>
-             )}
-          </div>
-          
-          {/* Desktop Only Log Out Button at the bottom */}
-          {isOwnProfile && (
-            <div className="hidden lg:block mt-20 pt-10 border-t border-white/5">
-              <button 
-                onClick={handleLogout} 
-                className="w-full max-w-xs mx-auto px-6 py-5 bg-red-600/10 text-red-500 border border-red-500/20 rounded-[28px] font-black uppercase text-[11px] tracking-[0.25em] flex items-center justify-center gap-4 hover:bg-red-600 hover:text-white transition-all shadow-2xl group italic"
-              >
-                <LogOut size={20} className="group-hover:rotate-12 transition-transform" /> 
-                <span>Sign Out Account</span>
-              </button>
+                <div className="grid grid-cols-2 md:grid-cols-2 gap-4 mt-6">
+                  {profileData.specialBadges && profileData.specialBadges.length > 0 ? profileData.specialBadges.map((badge) => (
+                    <SpecialAnimatedBadge key={badge} label={badge} />
+                  )) : <div className="col-span-full py-10 border border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-gray-600"><Sparkles size={24} className="mb-2 opacity-20" /><span className="text-[9px] font-black uppercase tracking-[0.2em] italic">No Elite Badges Assigned</span></div>}
+                </div>
+              </div>
             </div>
-          )}
+
+            <div className="lg:col-span-5 space-y-8">
+               <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest border-l-4 border-green-500 pl-4 italic">Squad Allegiance</h4>
+               {teamData ? (
+                 <div onClick={() => setIsTeamModalOpen(true)} className="glass-card p-8 rounded-[40px] border-white/10 hover:border-green-500/50 transition-all cursor-pointer group relative overflow-hidden shadow-xl">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity"><Shield size={80} /></div>
+                    <div className="flex items-center gap-6 relative z-10">
+                       <img src={teamData.teamLogo || 'https://via.placeholder.com/150'} className="w-20 h-20 rounded-3xl object-cover shadow-2xl border-2 border-white/10 group-hover:scale-110 transition-transform" />
+                       <div className="flex-grow">
+                          <p className="text-[10px] font-black text-green-400 uppercase mb-1">Elite Squad</p>
+                          <h5 className="text-2xl font-black text-white italic uppercase tracking-tighter group-hover:text-green-400 transition-colors">{teamData.teamName}</h5>
+                          <div className="flex items-center gap-2 mt-2"><Users size={12} className="text-gray-500" /><span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">View Roster</span></div>
+                       </div>
+                    </div>
+                 </div>
+               ) : <div className="p-10 border-2 border-dashed border-white/10 rounded-[40px] flex flex-col items-center justify-center text-center space-y-4"><UserPlus size={40} className="text-gray-600 opacity-20" /><p className="text-[10px] font-black text-gray-600 uppercase italic">Unassigned Operative</p></div>}
+            </div>
+          </div>
+          {isOwnProfile && <div className="hidden lg:block mt-20 pt-10 border-t border-white/5 text-center"><button onClick={handleLogout} className="px-10 py-5 bg-red-600/10 text-red-500 border border-red-500/20 rounded-[32px] font-black uppercase text-[10px] tracking-[0.3em] flex items-center justify-center gap-4 mx-auto hover:bg-red-600 hover:text-white transition-all shadow-2xl group italic"><LogOut size={20} className="group-hover:translate-x-1 transition-transform" /> Terminate Session</button></div>}
         </div>
       </div>
 
+      <EvolutionHub 
+        isOpen={isEvolutionModalOpen} 
+        onClose={() => setIsEvolutionModalOpen(false)} 
+        profileData={profileData} 
+        expPercentage={expPercentage} 
+      />
+
+      {isEditModalOpen && <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setIsEditModalOpen(false)}></div><div className="relative w-full max-w-lg glass-card rounded-[50px] border-white/20 p-10 shadow-2xl animate-in zoom-in duration-300"><div className="flex justify-between items-center mb-10"><h3 className="font-orbitron text-2xl font-black text-white uppercase italic tracking-tighter">Edit Protocols</h3><button onClick={() => setIsEditModalOpen(false)} className="p-2 text-gray-500 hover:text-white transition-all"><X size={24}/></button></div><div className="space-y-8"><div className="space-y-3"><label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">FullName</label><input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-purple-500 outline-none transition-all shadow-inner" /></div><div className="space-y-3"><label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">Bio</label><textarea rows={3} value={editBio} onChange={e => setEditBio(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-purple-500 outline-none transition-all shadow-inner resize-none" /></div><div className="pt-4"><button onClick={async () => { setLoading(true); await updateDoc(doc(db, 'users', profileData.uid), { fullName: editName, bio: editBio }); setLoading(false); setIsEditModalOpen(false); }} disabled={loading} className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-purple-600/30 hover:scale-[1.02] transition-all flex items-center justify-center gap-3">{loading ? <Loader2 size={20} className="animate-spin" /> : <><Save size={20}/> Save Protocols</>}</button></div></div></div></div>}
+
       <style>{`
-        @keyframes shine {
-          0% { transform: translateX(-100%) skewX(-15deg); }
-          100% { transform: translateX(200%) skewX(-15deg); }
-        }
-        .animate-badge { position: relative; overflow: hidden; }
-        .animate-badge::after {
-          content: "";
-          position: absolute;
-          top: 0; left: 0; width: 40%; height: 100%;
-          background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent);
-          animation: shine 2.5s infinite linear;
-        }
+        @keyframes sweep { 0% { transform: translateX(-150%) skewX(-15deg); } 100% { transform: translateX(150%) skewX(-15deg); } }
+        .animate-shine { position: relative; overflow: hidden; }
+        .animate-shine::after { content: ""; position: absolute; top: 0; left: 0; width: 50%; height: 100%; background: linear-gradient(to right, transparent, rgba(255,255,255,0.4), transparent); animation: sweep 3s infinite ease-in-out; }
       `}</style>
     </div>
   );
 };
 
-const BadgeItem = ({ icon, label, color, active = true }: any) => (
-  <div className={`flex items-center justify-between p-5 rounded-[24px] border transition-all ${active ? `bg-gradient-to-r ${color} border-white/20 text-white shadow-xl` : 'bg-white/5 border-white/5 text-gray-600 grayscale'}`}>
-     <div className="flex items-center gap-4">
-        <div className="p-3 bg-white/20 rounded-xl shadow-inner">{icon}</div>
-        <span className="text-[12px] font-black uppercase italic tracking-widest">{label}</span>
-     </div>
-     {active && <Award size={18} className="opacity-50" />}
+const StatPlate = ({ label, value, icon, color, border }: any) => (
+  <div className={`px-6 py-4 bg-gradient-to-br ${color} rounded-[28px] border-2 ${border} flex flex-col items-center justify-center shadow-2xl`}>
+    <div className="flex items-center gap-2 mb-1 opacity-60">{icon} <span className="text-[8px] font-black uppercase tracking-widest">{label}</span></div>
+    <span className="text-2xl font-black font-orbitron italic leading-none">{value}</span>
   </div>
 );
 
-const SpecialBadgeItem: React.FC<{ label: SpecialBadge }> = ({ label }) => {
-  const getColors = () => {
+const BadgeItem = ({ icon, label, color }: any) => (
+  <div className={`flex items-center gap-4 p-5 rounded-[24px] bg-gradient-to-r ${color} to-black/40 border border-white/10 text-white shadow-lg hover:scale-[1.02] transition-transform cursor-default`}><div className="p-2.5 bg-white/10 rounded-xl shadow-inner">{icon}</div><span className="text-[12px] font-black uppercase italic tracking-widest">{label}</span></div>
+);
+
+const SpecialAnimatedBadge: React.FC<{ label: SpecialBadge }> = ({ label }) => {
+  const getBadgeConfig = () => {
     switch(label) {
-      case 'Best Rusher': return 'from-orange-500 to-red-600';
-      case 'Best IGL': return 'from-purple-600 to-indigo-700';
-      case 'Best Supporter': return 'from-green-500 to-teal-600';
-      case 'Best Sniper': return 'from-blue-500 to-blue-800';
-      default: return 'from-gray-500 to-gray-700';
+      case 'Best Rusher': return { color: 'from-orange-500 to-red-600', icon: <Zap size={14} /> };
+      case 'Best IGL': return { color: 'from-purple-600 to-indigo-700', icon: <Shield size={14} /> };
+      case 'Best Supporter': return { color: 'from-green-500 to-emerald-700', icon: <Heart size={14} /> };
+      case 'Best Sniper': return { color: 'from-blue-600 to-blue-900', icon: <Target size={14} /> };
+      default: return { color: 'from-gray-500 to-gray-700', icon: <Star size={14} /> };
     }
   };
-
+  const config = getBadgeConfig();
   return (
-    <div className={`p-5 rounded-3xl bg-gradient-to-br ${getColors()} text-white border border-white/20 shadow-2xl animate-badge`}>
-       <div className="flex items-center gap-2 mb-2">
-          <Star size={12} fill="currentColor" />
-          <span className="text-[9px] font-black uppercase italic tracking-widest opacity-80">Elite Tier</span>
-       </div>
-       <p className="text-lg font-black italic uppercase tracking-tighter leading-none">{label}</p>
+    <div className={`special-badge-card animate-shine p-5 rounded-[28px] bg-gradient-to-br ${config.color} border border-white/20 flex flex-col items-center justify-center text-center relative`}>
+      <div className="absolute top-2 right-4 flex items-center gap-1 opacity-40"><Star size={8} fill="currentColor" /><span className="text-[7px] font-black uppercase tracking-widest italic">Hall of Fame</span></div>
+      <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center mb-3 shadow-inner">{config.icon}</div>
+      <p className="text-[11px] font-black italic uppercase tracking-tighter text-white drop-shadow-lg leading-tight">{label}</p>
     </div>
   );
 };

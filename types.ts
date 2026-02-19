@@ -23,6 +23,13 @@ export type SpecialBadge =
   | 'Best Supporter' 
   | 'Best Sniper';
 
+export interface TaskProgress {
+  id: string;
+  count: number;
+  completed: boolean;
+  lastUpdated: string;
+}
+
 export interface UserProfile {
   uid: string;
   fullName: string;
@@ -32,6 +39,15 @@ export interface UserProfile {
   specialBadges?: SpecialBadge[];
   teamId?: string;
   email: string;
+  bio?: string;
+  totalKills?: number;
+  // Level System Fields
+  level?: number;
+  exp?: number; // This is current level progress EXP (resets on level up)
+  totalExp?: number; // This is lifetime total EXP (never resets)
+  dailyAdsCount?: number;
+  lastAdDate?: string;
+  tasksProgress?: TaskProgress[];
 }
 
 export interface TeamMatchStats {
