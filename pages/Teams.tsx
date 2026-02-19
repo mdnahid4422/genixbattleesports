@@ -70,12 +70,13 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
   };
 
   const filteredTeams = approvedTeams.filter(t => 
-    t.teamName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.captainUid.toLowerCase().includes(searchTerm.toLowerCase())
+    (t.teamName || '').toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+    (t.captainUid || '').toLowerCase().includes((searchTerm || '').toLowerCase())
   );
 
   const getTeamStats = (teamName: string): PointEntry | undefined => {
-    return appDb.points.find(p => p.teamName.toLowerCase() === teamName.toLowerCase());
+    if (!teamName) return undefined;
+    return appDb.points.find(p => (p.teamName || '').toLowerCase() === (teamName || '').toLowerCase());
   };
 
   if (permissionError) {
@@ -222,9 +223,9 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
 
             <div className="flex-grow overflow-y-auto p-8 md:p-12 custom-scrollbar">
                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-16">
-                  <StatBox icon={<Zap className="text-purple-500" />} label="Combat Duty" value={getTeamStats(selectedTeam.teamName)?.matchesPlayed || 0} />
-                  <StatBox icon={<Target className="text-red-500" />} label="Eliminations" value={getTeamStats(selectedTeam.teamName)?.killPoints || 0} />
-                  <StatBox icon={<Trophy className="text-yellow-500" />} label="Hall of Fame Score" value={getTeamStats(selectedTeam.teamName)?.totalPoints || 0} highlight />
+                  <StatBox icon={<Zap className="text-purple-500" />} label="Combat Duty" value={getTeamStats(selectedTeam.teamName || '')?.matchesPlayed || 0} />
+                  <StatBox icon={<Target className="text-red-500" />} label="Eliminations" value={getTeamStats(selectedTeam.teamName || '')?.killPoints || 0} />
+                  <StatBox icon={<Trophy className="text-yellow-500" />} label="Hall of Fame Score" value={getTeamStats(selectedTeam.teamName || '')?.totalPoints || 0} highlight />
                </div>
 
                <div className="space-y-8">

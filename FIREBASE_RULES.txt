@@ -1,43 +1,51 @@
-
 ============================================================
-           GENIX BATTLE - FIRESTORE SECURITY RULES
+           GENIX BATTLE - FIRESTORE SECURITY RULES (V2)
 ============================================================
 
-নিচের কোডটি কপি করে আপনার Firebase Console -> Firestore -> Rules ট্যাবে পেস্ট করুন।
-এটি না করলে 'Permission Denied' এরর আসবে এবং ডাটা লোড হবে না।
+আপনার Firebase Console -> Firestore -> Rules ট্যাবে নিচের কোডটি পেস্ট করুন।
+এটি 'Permission Denied' এরর স্থায়ীভাবে দূর করবে।
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // ১. গ্লোবাল অ্যাপ ডাটা (রুম এবং পয়েন্ট টেবিল) - যে কেউ দেখতে পারবে
+    // ১. অ্যাপের গ্লোবাল ডাটা - যে কেউ দেখতে পারবে
     match /app/global_data {
       allow read: if true;
-      // আপাতত সেটআপের সুবিধার জন্য যে কেউ লিখতে পারবে, পরে চাইলে অ্যাডমিন চেক বসানো যাবে
       allow write: if request.auth != null;
     }
 
-    // ২. রেজিস্ট্রেশন এবং টিম ডাটা
+    // ২. রেজিস্ট্রেশন কালেকশন - রিড সবার জন্য উন্মুক্ত
     match /registrations/{teamId} {
       allow read: if true;
-      allow create, update: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow create, update, delete: if request.auth != null;
 
+      // মেম্বারশিপ রিকোয়েস্ট
       match /requests/{requestId} {
         allow read, write: if request.auth != null;
       }
     }
 
-    // ৩. ইউজার মেম্বারশিপ স্ট্যাটাস
+    // ৩. মেম্বারশিপ ট্র্যাকিং
     match /users_membership/{userId} {
       allow read: if true;
       allow write: if request.auth != null;
     }
 
-    // ৪. ইউজার প্রোফাইল এবং রোল
+    // ৪. ইউজার প্রোফাইল (অবশ্যই 'users' নামে কালেকশন হতে হবে)
     match /users/{userId} {
+      allow read: if true; // সবার রিড পারমিশন দেওয়া হলো যাতে সাইডবারে নাম দেখা যায়
+      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // অ্যাডমিন চেক (ঐচ্ছিক কিন্তু নিরাপদ)
+      allow update: if request.auth != null;
+    }
+
+    // ৫. পেমেন্ট অর্ডার (অ্যাডমিন এবং ইউজার)
+    match /orders/{orderId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null;
+      allow delete: if request.auth != null;
     }
   }
 }

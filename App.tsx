@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { LogIn, Shield, LayoutGrid, List, Users, Trophy, Menu, X, MessageSquare } from 'lucide-react';
-import { AppData } from './types';
+import { LogIn, Shield, LayoutGrid, List, Users, Trophy, Menu, X, MessageSquare, AlertCircle, UserCircle } from 'lucide-react';
+import { AppData, UserProfile } from './types';
 import { INITIAL_DATA } from './data';
 import { auth, db, onAuthStateChanged, doc, getDoc, onSnapshot } from './firebase';
 
@@ -15,8 +16,9 @@ import Rules from './pages/Rules';
 import Contact from './pages/Contact';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
+import Profile from './pages/Profile';
 
-const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> = ({ appDb, setAppDb, currentUser }) => {
+const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: UserProfile | null }> = ({ appDb, setAppDb, currentUser }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasTeam, setHasTeam] = useState(false);
   const navigate = useNavigate();
@@ -27,21 +29,22 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
       setHasTeam(false);
       return;
     }
+    
     const unsubReg = onSnapshot(doc(db, 'registrations', currentUser.uid), 
       (docSnap) => {
         if (docSnap.exists()) {
           setHasTeam(true);
         } else {
-          const unsubMem = onSnapshot(doc(db, 'users_membership', currentUser.uid), (memDoc) => {
+          onSnapshot(doc(db, 'users_membership', currentUser.uid), (memDoc) => {
             if (memDoc.exists() && memDoc.data().status === 'accepted') {
               setHasTeam(true);
             } else {
               setHasTeam(false);
             }
-          });
-          return () => unsubMem();
+          }, (err) => console.warn("Membership sync error (Permissions):", err.message));
         }
-      }
+      },
+      (err) => console.warn("Registration sync error (Permissions):", err.message)
     );
     return () => unsubReg();
   }, [currentUser]);
@@ -69,6 +72,8 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
     );
   };
 
+  const isAdminOrAbove = currentUser?.role === 'owner' || currentUser?.role === 'admin' || currentUser?.role === 'moderator';
+
   return (
     <div className="min-h-screen flex flex-col bg-[#060608]">
       <header className="sticky top-0 z-[100] glass-card border-b border-white/10 px-4 md:px-8 py-4 flex items-center justify-between">
@@ -92,13 +97,13 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
         </nav>
 
         <div className="flex items-center space-x-4">
-          <button onClick={() => handleNav(currentUser?.isAdmin ? '/admin' : '/login')} className="transition-all hover:scale-105 active:scale-95">
+          <button onClick={() => handleNav(currentUser ? '/profile' : '/login')} className="transition-all hover:scale-105 active:scale-95">
             {currentUser ? (
               <div className="flex items-center space-x-3 group bg-white/5 border border-white/10 p-1 pr-4 rounded-full hover:border-purple-500/50 transition-all">
-                <img src={currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.uid}`} className="w-8 h-8 rounded-full border border-white/10" alt="User" />
+                <img src={currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.uid}`} className="w-8 h-8 rounded-full border border-white/10 object-cover" alt="User" />
                 <div className="flex flex-col text-left">
-                  <span className="text-[10px] font-black text-white leading-none uppercase truncate max-w-[80px]">{currentUser.displayName}</span>
-                  <span className="text-[8px] text-purple-400 font-bold uppercase">{currentUser.isAdmin ? 'Admin' : 'Player'}</span>
+                  <span className="text-[10px] font-black text-white leading-none uppercase truncate max-w-[80px]">{currentUser.fullName}</span>
+                  <span className="text-[8px] text-purple-400 font-bold uppercase">{currentUser.role}</span>
                 </div>
               </div>
             ) : (
@@ -108,6 +113,11 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
               </div>
             )}
           </button>
+          {isAdminOrAbove && (
+            <button onClick={() => navigate('/admin')} className="hidden lg:flex p-2.5 bg-purple-600/20 text-purple-400 rounded-xl border border-purple-500/30 hover:bg-purple-600 hover:text-white transition-all">
+               <Shield size={18} />
+            </button>
+          )}
           <button className="lg:hidden p-2 text-white bg-white/5 rounded-lg border border-white/10" onClick={() => setIsMenuOpen(!isMenuOpen)}>
             {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -125,6 +135,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
              <NavLink to="/points" icon={Trophy}>Points</NavLink>
              <NavLink to="/rules" icon={List}>Rules</NavLink>
              <NavLink to="/contact" icon={MessageSquare}>Contact</NavLink>
+             {isAdminOrAbove && <NavLink to="/admin" icon={Shield}>Admin CP</NavLink>}
           </div>
         </div>
       )}
@@ -139,6 +150,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
           <Route path="/rules" element={<Rules db={appDb} />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login currentUser={currentUser} />} />
+          <Route path="/profile" element={<Profile user={currentUser} />} />
           <Route path="/admin" element={<Admin db={appDb} setDb={setAppDb} currentUser={currentUser} />} />
         </Routes>
       </main>
@@ -152,25 +164,43 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> 
 
 const App: React.FC = () => {
   const [appDb, setAppDb] = useState<AppData>(INITIAL_DATA);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const userData = userDoc.exists() ? userDoc.data() : { role: 'player' };
-        setCurrentUser({
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || user.email?.split('@')[0],
-          photoURL: user.photoURL,
-          isAdmin: userData.role === 'admin'
+        // Real-time listener for user profile to handle roles/badges updates instantly
+        const unsubUser = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setCurrentUser({
+              uid: user.uid,
+              email: user.email || '',
+              fullName: data.fullName || user.displayName || 'Player',
+              photoURL: data.photoURL || user.photoURL,
+              role: data.role || 'player',
+              position: data.position,
+              specialBadges: data.specialBadges || [],
+              teamId: data.teamId
+            });
+          } else {
+             setCurrentUser({
+                uid: user.uid,
+                email: user.email || '',
+                fullName: user.displayName || 'Player',
+                photoURL: user.photoURL || undefined,
+                role: 'player'
+             });
+          }
         });
+        setLoading(false);
+        return () => unsubUser();
       } else {
         setCurrentUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -180,7 +210,12 @@ const App: React.FC = () => {
       (docSnap) => {
         if (docSnap.exists()) {
           setAppDb(docSnap.data() as AppData);
+          setDbError(null);
         }
+      },
+      (err) => {
+        console.error("Critical: Global data sync failed!", err.message);
+        setDbError("ডাটাবেস কানেকশন এরর! ফায়ারবেস রুলস চেক করুন।");
       }
     );
     return () => unsubData();
@@ -198,6 +233,11 @@ const App: React.FC = () => {
 
   return (
     <Router>
+      {dbError && (
+        <div className="bg-red-600 text-white text-[10px] font-black uppercase text-center py-2 tracking-widest sticky top-0 z-[200] flex items-center justify-center gap-2">
+          <AlertCircle size={12} /> {dbError}
+        </div>
+      )}
       <AppContent appDb={appDb} setAppDb={setAppDb} currentUser={currentUser} />
     </Router>
   );

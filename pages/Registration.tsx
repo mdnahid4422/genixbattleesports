@@ -1,16 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, User, Phone, Camera, Loader2, Mail, Edit3, Eye, ArrowRight, UserPlus, Search, Check, X, Clock, CheckCircle } from 'lucide-react';
-import { AppData, Team } from '../types';
+import { Shield, User, Phone, Camera, Loader2, Mail, Edit3, Eye, ArrowRight, UserPlus, Search, Check, X, Clock, CheckCircle, Target } from 'lucide-react';
+import { AppData, Team, PlayerPosition } from '../types';
 import { auth, db, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, onAuthStateChanged } from '../firebase';
 
 interface RegistrationProps {
   db: AppData;
   setDb: (newDb: AppData | ((prev: AppData) => AppData)) => void;
 }
-
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwxRKscj8kGFeEVMJdNqy4Z5_Zrt3oOAZx7niWeMoRfG7jkQdcExLbb33Hox5Z4rWr9jQ/exec"; 
 
 const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -26,14 +24,15 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   
   const [formData, setFormData] = useState({
     teamName: '', teamEmail: '', phone: '', captainFullName: '', teamLogo: '',
-    captainName: '', captainUid: '', player2Name: '', player2Uid: '',
-    player3Name: '', player3Uid: '', player4Name: '', player4Uid: '',
-    player5Name: '', player5Uid: ''
+    captainName: '', captainUid: '', 
+    player2Name: '', player2Uid: '', player2Position: '1st Rusher' as PlayerPosition,
+    player3Name: '', player3Uid: '', player3Position: 'Supporter' as PlayerPosition,
+    player4Name: '', player4Uid: '', player4Position: 'Sniper Player' as PlayerPosition,
+    player5Name: '', player5Uid: '', player5Position: 'Backup Player' as PlayerPosition
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -47,30 +46,11 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
             setUserRegistration(data);
             setFormData(data as any);
             setViewState('view_team');
-            
             onSnapshot(collection(db, `registrations/${user.uid}/requests`), (snapshot) => {
-              const reqs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-              setJoinRequests(reqs);
+              setJoinRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
             });
-          } else {
-            const memDoc = await getDoc(doc(db, 'users_membership', user.uid));
-            if (memDoc.exists()) {
-              const membership = memDoc.data();
-              if (membership.status === 'accepted') {
-                const teamDoc = await getDoc(doc(db, 'registrations', membership.teamId));
-                if (teamDoc.exists()) {
-                  setUserRegistration(teamDoc.data() as Team);
-                  setViewState('view_team');
-                }
-              }
-            }
           }
-        } catch (e) {
-          console.error("Auth check error", e);
-        }
-      } else {
-        setCurrentUser(null);
-        setViewState('choice');
+        } catch (e) {}
       }
       setInitialLoading(false); 
     });
@@ -79,8 +59,7 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
 
   useEffect(() => {
     const unsubTeams = onSnapshot(collection(db, 'registrations'), (snapshot) => {
-      const teams = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAllTeams(teams);
+      setAllTeams(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
       setIsTeamsLoading(false);
     });
     return () => unsubTeams();
@@ -93,13 +72,11 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const MAX_DIM = 600; 
-        let width = img.width;
-        let height = img.height;
+        let width = img.width, height = img.height;
         if (width > height) { if (width > MAX_DIM) { height *= MAX_DIM / width; width = MAX_DIM; } }
         else { if (height > MAX_DIM) { width *= MAX_DIM / height; height = MAX_DIM; } }
         canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) { ctx.imageSmoothingQuality = 'medium'; ctx.drawImage(img, 0, 0, width, height); }
+        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', 0.5));
       };
     });
@@ -122,9 +99,8 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
-    
-    if (!formData.teamName || !formData.teamLogo || !formData.captainName || !formData.player2Name || !formData.player3Name || !formData.player4Name) {
-      alert("Please fill P1 to P4 slots. Player 5 is optional.");
+    if (!formData.teamName || !formData.teamLogo || !formData.captainName) {
+      alert("Please fill necessary slots.");
       return;
     }
 
@@ -132,49 +108,25 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     const payload = { 
       ...formData, 
       userUid: currentUser.uid, 
+      captainUid: currentUser.uid,
       captainAccountName: currentUser.displayName || currentUser.email.split('@')[0],
       isApproved: userRegistration?.isApproved || false,
       timestamp: new Date().toISOString(),
       registrationDate: userRegistration?.registrationDate || new Date().toISOString(),
-      likes: userRegistration?.likes || [] // Initialize likes array
+      likes: userRegistration?.likes || []
     };
 
     try {
-      fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
       await setDoc(doc(db, 'registrations', currentUser.uid), payload);
+      // Update Captain's profile with position
+      await updateDoc(doc(db, 'users', currentUser.uid), { position: 'Captain', teamId: currentUser.uid });
+      
       setUserRegistration(payload as any);
       setIsEditing(false);
       setViewState('view_team');
-      alert(userRegistration ? "Team updated!" : "Registration submitted! Admin approval pending.");
+      alert("Registration submitted!");
     } catch (err) {
       alert("Error saving data.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleJoinRequest = async (teamId: string, playerName: string, slotKey: string) => {
-    if (!currentUser) return;
-    setIsLoading(true);
-    try {
-      const requestData = {
-        userId: currentUser.uid,
-        userName: currentUser.displayName || currentUser.email.split('@')[0],
-        playerName: playerName,
-        slotKey: slotKey,
-        status: 'pending',
-        timestamp: new Date().toISOString()
-      };
-      await setDoc(doc(db, `registrations/${teamId}/requests`, currentUser.uid), requestData);
-      await setDoc(doc(db, 'users_membership', currentUser.uid), {
-        teamId: teamId,
-        status: 'pending',
-        timestamp: new Date().toISOString()
-      });
-      alert(`Request sent to captain for slot: ${playerName}.`);
-      setViewState('choice');
-    } catch (err) {
-      alert("Error sending join request.");
     } finally {
       setIsLoading(false);
     }
@@ -185,6 +137,14 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     try {
       await updateDoc(doc(db, `registrations/${currentUser.uid}/requests`, req.userId), { status: 'accepted' });
       await updateDoc(doc(db, 'users_membership', req.userId), { status: 'accepted' });
+      
+      // Update the player's profile with their assigned role
+      const playerPos = (userRegistration as any)[`${req.slotKey}Position`] || 'Player';
+      await updateDoc(doc(db, 'users', req.userId), { 
+        position: playerPos, 
+        teamId: currentUser.uid 
+      });
+
       const updatedTeam = { 
         ...userRegistration, 
         [`${req.slotKey}Uid`]: req.userId,
@@ -192,85 +152,23 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       };
       await setDoc(doc(db, 'registrations', currentUser.uid), updatedTeam);
       setUserRegistration(updatedTeam as any);
-      alert("Player added to roster!");
-    } catch (err) {
-      alert("Error approving player.");
-    }
+      alert("Player added with role: " + playerPos);
+    } catch (err) { alert("Error approving."); }
   };
 
   if (initialLoading) return <div className="min-h-[60vh] flex items-center justify-center"><Loader2 className="animate-spin text-purple-500" size={40} /></div>;
-
-  if (!currentUser) return (
-    <div className="py-20 px-4 text-center">
-      <div className="max-w-md mx-auto glass-card p-10 rounded-[40px] border-white/10">
-        <Shield size={60} className="mx-auto mb-6 text-purple-500 opacity-50" />
-        <h2 className="text-2xl font-black font-orbitron text-white uppercase italic mb-4">Registration Locked</h2>
-        <p className="text-gray-500 mb-8 text-sm uppercase font-bold tracking-widest italic">Sign in to access tournament registration</p>
-        <button onClick={() => navigate('/login')} className="inline-flex items-center space-x-2 px-8 py-4 bg-purple-600 rounded-2xl text-white font-black uppercase text-xs tracking-widest hover:bg-purple-700 transition-all">
-          <span>Login</span> <ArrowRight size={16} />
-        </button>
-      </div>
-    </div>
-  );
 
   if (viewState === 'choice') {
     return (
       <div className="py-20 px-4 max-w-4xl mx-auto animate-in fade-in">
         <div className="text-center mb-16">
-          <h2 className="font-orbitron text-5xl font-black italic text-white uppercase tracking-tighter italic">Arena Entry</h2>
+          <h2 className="font-orbitron text-5xl font-black italic text-white uppercase tracking-tighter">Arena Entry</h2>
           <p className="text-gray-500 font-bold uppercase tracking-widest mt-2 italic">Select Registration Mode</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <ChoiceCard title="Register New Team" desc="For Captains. Create a new roster and upload team logo (Moderation required)." icon={<Shield size={40}/>} onClick={() => setViewState('register')} primary />
-          <ChoiceCard title="Join Existing Team" desc="For Players. Search for your team and request to join an available slot." icon={<UserPlus size={40}/>} onClick={() => setViewState('join_list')} />
+          <ChoiceCard title="Register New Team" desc="For Captains. Create a new roster and define player positions." icon={<Shield size={40}/>} onClick={() => setViewState('register')} primary />
+          <ChoiceCard title="Join Existing Team" desc="For Players. Search for your team and request to join your assigned role." icon={<UserPlus size={40}/>} onClick={() => setViewState('join_list')} />
         </div>
-      </div>
-    );
-  }
-
-  if (viewState === 'join_list') {
-    const filteredTeams = allTeams.filter(t => t.teamName?.toLowerCase().includes(searchTerm.toLowerCase()));
-    return (
-      <div className="py-12 px-4 max-w-5xl mx-auto animate-in fade-in">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
-          <button onClick={() => setViewState('choice')} className="text-[10px] font-black uppercase text-purple-400 mb-2 hover:underline">← Back to Options</button>
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18}/>
-            <input type="text" placeholder="Search Team..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-white text-sm focus:border-purple-500 transition-all font-semibold" />
-          </div>
-        </div>
-        {isTeamsLoading ? (
-          <div className="py-20 flex justify-center"><Loader2 size={40} className="animate-spin text-purple-500" /></div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredTeams.map(team => (
-              <div key={team.id} className="glass-card p-6 rounded-[32px] border-white/10 hover:border-purple-500/30 transition-all">
-                <div className="flex items-center space-x-4 mb-6">
-                  <img src={team.teamLogo || 'https://via.placeholder.com/150'} className="w-16 h-16 rounded-2xl object-cover bg-black/50" />
-                  <div>
-                    <h3 className="text-xl font-black text-white uppercase italic tracking-tight">{team.teamName}</h3>
-                    <p className="text-[10px] text-gray-500 font-bold uppercase">{team.isApproved ? 'Verified' : 'Pending'}</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                   {['player2', 'player3', 'player4', 'player5'].map(key => {
-                     const pName = (team as any)[`${key}Name`];
-                     const pUid = (team as any)[`${key}Uid`];
-                     if (!pName) return null;
-                     return (
-                       <div key={key} className="flex items-center justify-between p-3 bg-black/30 rounded-xl border border-white/5">
-                         <span className="text-xs font-bold text-gray-300 italic">{pName}</span>
-                         {pUid ? <span className="text-[8px] font-black text-gray-600 uppercase">Taken</span> : (
-                           <button onClick={() => handleJoinRequest(team.id, pName, key)} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-[9px] font-black uppercase text-white shadow-lg">Join Slot</button>
-                         )}
-                       </div>
-                     );
-                   })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     );
   }
@@ -284,53 +182,23 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
             <img src={userRegistration.teamLogo || 'https://via.placeholder.com/150'} className="w-40 h-40 rounded-[32px] border-4 border-purple-500/30 object-cover shadow-2xl" />
             <div className="text-center md:text-left flex-grow">
               <h3 className="text-4xl font-black font-orbitron text-white uppercase italic tracking-tighter mb-2">{userRegistration.teamName}</h3>
-              <div className="flex flex-wrap justify-center md:justify-start gap-2">
-                {userRegistration.isApproved ? (
-                  <span className="px-3 py-1 bg-green-500/20 border border-green-500/50 rounded-full text-[10px] text-green-400 font-black uppercase italic"><CheckCircle size={12} className="inline mr-1"/> Verified Team</span>
-                ) : (
-                  <span className="px-3 py-1 bg-yellow-500/20 border border-yellow-500/50 rounded-full text-[10px] text-yellow-400 font-black uppercase italic"><Clock size={12} className="inline mr-1"/> Approval Pending</span>
-                )}
-                <span className="px-3 py-1 bg-blue-500/20 border border-blue-500/50 rounded-full text-[10px] text-blue-400 font-black uppercase italic">{userRegistration.teamEmail}</span>
-              </div>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest italic">{userRegistration.isApproved ? 'Verified Squad' : 'Approval Pending'}</p>
             </div>
           </div>
           
           <div className="p-8 md:p-12 grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
-              <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Team Roster</h4>
+              <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Roster Assignments</h4>
               <div className="space-y-3">
-                <RosterRow 
-                  name={userRegistration.captainName} 
-                  role="Captain" 
-                  accountName={userRegistration.captainAccountName} 
-                  active 
-                />
-                <RosterRow 
-                  name={userRegistration.player2Name} 
-                  role="P2" 
-                  accountName={userRegistration.player2AccountName} 
-                  active={!!userRegistration.player2Uid} 
-                />
-                <RosterRow 
-                  name={userRegistration.player3Name} 
-                  role="P3" 
-                  accountName={userRegistration.player3AccountName} 
-                  active={!!userRegistration.player3Uid} 
-                />
-                <RosterRow 
-                  name={userRegistration.player4Name} 
-                  role="P4" 
-                  accountName={userRegistration.player4AccountName} 
-                  active={!!userRegistration.player4Uid} 
-                />
-                {userRegistration.player5Name && (
+                <RosterRow name={userRegistration.captainName} role="Captain" active />
+                {[2, 3, 4, 5].map(num => (
                   <RosterRow 
-                    name={userRegistration.player5Name} 
-                    role="P5 (Sub)" 
-                    accountName={userRegistration.player5AccountName} 
-                    active={!!userRegistration.player5Uid} 
+                    key={num}
+                    name={(userRegistration as any)[`player${num}Name`]} 
+                    role={(userRegistration as any)[`player${num}Position`]} 
+                    active={!!(userRegistration as any)[`player${num}Uid`]} 
                   />
-                )}
+                ))}
               </div>
             </div>
 
@@ -338,38 +206,16 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
               <div className="space-y-6">
                 <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-yellow-500 pl-4 italic">Join Requests</h4>
                 <div className="space-y-3">
-                  {joinRequests.filter(r => r.status === 'pending').length > 0 ? (
-                    joinRequests.filter(r => r.status === 'pending').map(req => (
-                      <div key={req.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-black text-white italic">{req.playerName}</p>
-                          <p className="text-[10px] text-gray-500 font-bold uppercase">Requester: {req.userName}</p>
-                        </div>
-                        <div className="flex space-x-2">
-                           <button onClick={() => handleApproveRequest(req)} className="p-2 bg-green-600/20 text-green-500 rounded-lg hover:bg-green-600 hover:text-white transition-all"><Check size={16}/></button>
-                           <button className="p-2 bg-red-600/20 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all"><X size={16}/></button>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-10 text-center border border-dashed border-white/5 rounded-2xl">
-                       <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic">No pending requests</p>
+                  {joinRequests.filter(r => r.status === 'pending').map(req => (
+                    <div key={req.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
+                      <div><p className="text-sm font-black text-white italic">{req.playerName}</p><p className="text-[10px] text-gray-500 font-bold uppercase">{req.userName}</p></div>
+                      <button onClick={() => handleApproveRequest(req)} className="p-2 bg-green-600/20 text-green-500 rounded-lg"><Check size={16}/></button>
                     </div>
-                  )}
+                  ))}
+                  {joinRequests.filter(r => r.status === 'pending').length === 0 && <p className="text-[10px] text-gray-600 italic">No pending requests.</p>}
                 </div>
               </div>
             )}
-          </div>
-
-          <div className="p-8 bg-white/2 border-t border-white/5 flex flex-col md:flex-row gap-4">
-            {isCaptain && (
-              <button onClick={() => setIsEditing(true)} className="flex-grow flex items-center justify-center space-x-3 py-4 bg-purple-600 hover:bg-purple-700 rounded-2xl text-white font-black uppercase text-xs shadow-xl shadow-purple-600/20 transition-all">
-                <Edit3 size={18} /> <span>Edit Team Info</span>
-              </button>
-            )}
-            <button onClick={() => navigate('/teams')} className="flex-grow flex items-center justify-center space-x-3 py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-gray-400 border border-white/10 font-black uppercase text-xs transition-all">
-              <Eye size={18} /> <span>Verified Squads</span>
-            </button>
           </div>
         </div>
       </div>
@@ -378,58 +224,54 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
 
   return (
     <div className="py-12 px-4 md:px-8 max-w-5xl mx-auto animate-in fade-in">
-       <button onClick={() => userRegistration ? setViewState('view_team') : setViewState('choice')} className="text-[10px] font-black uppercase text-purple-400 mb-6 hover:underline">← Cancel Registration</button>
-       <div className="text-center mb-12">
-        <h2 className="font-orbitron text-5xl font-black italic mb-4 text-white uppercase tracking-tighter italic">Squad Entry</h2>
-        <p className="text-gray-500 font-bold uppercase tracking-widest italic italic">P1-P4 Required | P5 Optional</p>
-      </div>
-
-      <div className="glass-card p-8 md:p-12 rounded-[40px] border-white/10">
-        <form onSubmit={handleSubmit} className="space-y-10 text-left">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="relative group cursor-pointer" onClick={() => !isProcessingImage && fileInputRef.current?.click()}>
-              <div className={`w-36 h-36 rounded-[32px] border-2 border-dashed flex items-center justify-center overflow-hidden transition-all ${formData.teamLogo ? 'border-purple-500' : 'border-white/20 hover:border-purple-500'}`}>
-                {isProcessingImage ? <Loader2 size={32} className="animate-spin text-purple-400" /> : 
-                 formData.teamLogo ? <img src={formData.teamLogo} className="w-full h-full object-cover" /> : 
-                 <div className="text-center p-4"><Camera size={32} className="text-gray-500 mx-auto mb-2" /><span className="text-[8px] font-black text-gray-600 uppercase">Upload Logo</span></div>}
+       <div className="glass-card p-8 md:p-12 rounded-[40px] border-white/10">
+        <form onSubmit={handleSubmit} className="space-y-10">
+          <div className="flex flex-col items-center">
+            <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+              <div className="w-32 h-32 rounded-[28px] border-2 border-dashed border-white/20 flex items-center justify-center overflow-hidden">
+                {formData.teamLogo ? <img src={formData.teamLogo} className="w-full h-full object-cover" /> : <Camera size={32} className="text-gray-500" />}
               </div>
               <input type="file" ref={fileInputRef} onChange={handleLogoUpload} className="hidden" accept="image/*" />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <InputGroup label="Team Name *" value={formData.teamName} onChange={(v: string) => setFormData({...formData, teamName: v})} placeholder="GENIX BATTLE" />
-            <InputGroup label="Official Email *" value={formData.teamEmail} onChange={(v: string) => setFormData({...formData, teamEmail: v})} placeholder="captain@mail.com" />
-            <InputGroup label="WhatsApp Number *" value={formData.phone} onChange={(v: string) => setFormData({...formData, phone: v})} placeholder="+8801XXXXXXXXX" />
-            <InputGroup label="Captain Full Name *" value={formData.captainFullName} onChange={(v: string) => setFormData({...formData, captainFullName: v})} placeholder="Real Name" />
+            <InputGroup label="Team Name *" value={formData.teamName} onChange={(v: string) => setFormData({...formData, teamName: v})} />
+            <InputGroup label="WhatsApp *" value={formData.phone} onChange={(v: string) => setFormData({...formData, phone: v})} />
           </div>
 
-          <div className="space-y-6 pt-10 border-t border-white/5">
-             <h3 className="text-purple-400 font-black uppercase tracking-[0.3em] text-[10px] italic">Athlete Assignments</h3>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="p-6 bg-purple-600/5 rounded-3xl border border-purple-500/20 space-y-4 md:col-span-2">
-                   <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest">P1 Captain (Me)</p>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <InputGroup label="In-Game Name *" value={formData.captainName} onChange={(v: string) => setFormData({...formData, captainName: v})} placeholder="IGN" />
-                      <InputGroup label="Free Fire UID *" value={formData.captainUid} onChange={(v: string) => setFormData({...formData, captainUid: v})} placeholder="UID" />
-                   </div>
-                </div>
-                {[2, 3, 4].map(num => (
-                   <div key={num} className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
-                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest italic">Player {num} (P{num}) *</p>
-                      <InputGroup label={`P${num} In-Game Name`} value={(formData as any)[`player${num}Name`]} onChange={(v: string) => setFormData({...formData, [`player${num}Name`]: v})} placeholder="IGN" />
-                   </div>
-                ))}
-                <div className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
-                   <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic">Player 5 (Substitute) [OPTIONAL]</p>
-                   <InputGroup label="P5 Sub IGN" value={formData.player5Name} onChange={(v: string) => setFormData({...formData, player5Name: v})} placeholder="Optional IGN" />
-                </div>
-             </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-10 border-t border-white/5">
+            <div className="p-6 bg-purple-600/5 rounded-3xl border border-purple-500/20 space-y-4 md:col-span-2">
+               <p className="text-[10px] font-black text-purple-400 uppercase">P1 Captain (Me)</p>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <InputGroup label="My In-Game Name *" value={formData.captainName} onChange={(v: string) => setFormData({...formData, captainName: v})} />
+                  <InputGroup label="My UID *" value={formData.captainUid} onChange={(v: string) => setFormData({...formData, captainUid: v})} />
+               </div>
+            </div>
+            {[2, 3, 4, 5].map(num => (
+              <div key={num} className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
+                 <p className="text-[10px] font-black text-blue-400 uppercase italic">Player {num} {num === 5 ? '(Optional)' : '*'}</p>
+                 <InputGroup label="IGN" value={(formData as any)[`player${num}Name`]} onChange={(v: string) => setFormData({...formData, [`player${num}Name`]: v})} />
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Assigned Role</label>
+                    <select 
+                      value={(formData as any)[`player${num}Position`]} 
+                      onChange={e => setFormData({...formData, [`player${num}Position`]: e.target.value as PlayerPosition})}
+                      className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white text-xs font-bold outline-none"
+                    >
+                       <option value="1st Rusher">1st Rusher</option>
+                       <option value="2nd Rusher">2nd Rusher</option>
+                       <option value="Supporter">Supporter</option>
+                       <option value="Sniper Player">Sniper Player</option>
+                       <option value="Backup Player">Backup Player</option>
+                       <option value="Coach">Coach</option>
+                       <option value="Manager">Manager</option>
+                    </select>
+                 </div>
+              </div>
+            ))}
           </div>
-
-          <button type="submit" disabled={isLoading || isProcessingImage} className="w-full py-5 bg-purple-600 hover:bg-purple-700 rounded-2xl font-black font-orbitron text-lg uppercase tracking-widest text-white italic flex items-center justify-center shadow-xl shadow-purple-600/20 transition-all">
-            {isLoading ? <Loader2 className="animate-spin" /> : <span>{isEditing ? 'Confirm Updates' : 'Submit Registration'}</span>}
-          </button>
+          <button type="submit" className="w-full py-5 bg-purple-600 rounded-2xl font-black uppercase text-white shadow-xl shadow-purple-600/20">Submit Roster</button>
         </form>
       </div>
     </div>
@@ -437,37 +279,24 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
 };
 
 const ChoiceCard = ({ title, desc, icon, onClick, primary }: any) => (
-  <button onClick={onClick} className={`p-10 rounded-[40px] text-left transition-all group border ${primary ? 'bg-purple-600 text-white shadow-2xl shadow-purple-600/30 border-purple-500 hover:scale-[1.02]' : 'bg-white/5 text-gray-400 border-white/10 hover:border-purple-500/50 hover:bg-white/10'}`}>
-    <div className={`mb-8 p-6 rounded-3xl w-fit transition-transform group-hover:-rotate-12 ${primary ? 'bg-white/20' : 'bg-white/5 text-purple-500'}`}>{icon}</div>
+  <button onClick={onClick} className={`p-10 rounded-[40px] text-left transition-all group border ${primary ? 'bg-purple-600 text-white shadow-2xl border-purple-500 hover:scale-[1.02]' : 'bg-white/5 text-gray-400 border-white/10 hover:bg-white/10'}`}>
+    <div className={`mb-8 p-6 rounded-3xl w-fit ${primary ? 'bg-white/20' : 'bg-white/5 text-purple-500'}`}>{icon}</div>
     <h3 className="text-3xl font-black font-orbitron uppercase italic mb-4 text-white">{title}</h3>
-    <p className={`text-sm font-medium leading-relaxed ${primary ? 'text-purple-100' : 'text-gray-500'}`}>{desc}</p>
+    <p className="text-sm font-medium leading-relaxed opacity-60">{desc}</p>
   </button>
 );
 
-const RosterRow = ({ name, role, accountName, active }: any) => (
-  <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${active ? 'bg-purple-600/10 border-purple-500/30' : 'bg-white/2 border-white/5 opacity-40'}`}>
-    <div className="flex items-center space-x-4">
-       <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] ${active ? 'bg-purple-600 text-white' : 'bg-white/10 text-gray-500'}`}>{role}</div>
-       <span className={`text-sm font-black italic ${active ? 'text-white' : 'text-gray-500'}`}>{name || 'EMPTY'}</span>
-    </div>
-    <div className="flex items-center space-x-2">
-      <span className="text-[10px] font-bold text-gray-500 bg-black/50 px-3 py-1.5 rounded-xl border border-white/5 tracking-tight uppercase">
-        {accountName || (active ? 'Loading...' : 'N/A')}
-      </span>
-    </div>
+const RosterRow = ({ name, role, active }: any) => (
+  <div className={`flex items-center justify-between p-4 rounded-2xl border ${active ? 'bg-purple-600/10 border-purple-500/30' : 'bg-white/2 border-white/5 opacity-40'}`}>
+    <span className="text-sm font-black italic text-white uppercase">{name || 'EMPTY'}</span>
+    <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">{role}</span>
   </div>
 );
 
 const InputGroup = ({ label, value, onChange, placeholder }: any) => (
   <div className="flex flex-col space-y-2 text-left w-full">
     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</label>
-    <input 
-      type="text" 
-      value={value} 
-      onChange={(e) => onChange(e.target.value)} 
-      placeholder={placeholder} 
-      className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:border-purple-500 outline-none transition-all font-semibold" 
-    />
+    <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:border-purple-500 outline-none font-semibold" />
   </div>
 );
 

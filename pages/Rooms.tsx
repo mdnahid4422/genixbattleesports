@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { AppData, RoomStatus, Room, MatchResult, Order } from '../types';
-import { Calendar, Clock, Users, Lock, Unlock, Eye, EyeOff, AlertCircle, Trophy, Medal, Target, Shield, Info, X, CreditCard, ChevronRight, CheckCircle2, Loader2, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, Users, Lock, Unlock, Eye, EyeOff, AlertCircle, Trophy, Medal, Target, Shield, Info, X, CreditCard, ChevronRight, CheckCircle2, Loader2, MessageCircle, PartyPopper } from 'lucide-react';
 import { db, collection, addDoc, onSnapshot, query, where, doc, getDoc, auth } from '../firebase';
 
 interface RoomsProps {
@@ -12,6 +11,7 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
   const [filter, setFilter] = useState<'All' | RoomStatus>('All');
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [paymentModal, setPaymentModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false); // New Success Modal State
   const [selectedMethod, setSelectedMethod] = useState<'bkash' | 'nagad' | 'rocket' | null>(null);
   const [senderNumber, setSenderNumber] = useState('');
   const [txnId, setTxnId] = useState('');
@@ -42,23 +42,37 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
   };
 
   const handleAction = (room: Room) => {
-    const status = getOrderStatus(room.id);
-    if (status === 'approved' || room.status === RoomStatus.COMPLETE) {
+    const orderStatus = getOrderStatus(room.id);
+    
+    if (orderStatus === 'approved' || room.status === RoomStatus.COMPLETE) {
       setSelectedRoom(room);
-    } else if (status === 'pending') {
+      return;
+    } 
+    
+    if (orderStatus === 'pending') {
       alert("আপনার পেমেন্ট বর্তমানে যাচাই করা হচ্ছে। অনুগ্রহ করে অ্যাডমিন এপ্রুভ করা পর্যন্ত অপেক্ষা করুন।");
-    } else {
-      if (!currentUser) {
-        alert("অনুগ্রহ করে প্রথমে লগইন করুন!");
-        return;
-      }
-      if (!myTeam) {
-        alert("স্লট বুক করতে হলে আপনার একটি রেজিস্টার্ড টিম থাকতে হবে!");
-        return;
-      }
-      setSelectedRoom(room);
-      setPaymentModal(true);
+      return;
+    } 
+
+    if (!currentUser) {
+      alert("অনুগ্রহ করে প্রথমে লগইন করুন!");
+      return;
     }
+    if (!myTeam) {
+      alert("স্লট বুক করতে হলে আপনার একটি রেজিস্টার্ড টিম থাকতে হবে!");
+      return;
+    }
+    
+    setSelectedRoom(room);
+    setPaymentModal(true);
+  };
+
+  const closePaymentModal = () => {
+    setPaymentModal(false);
+    setSelectedRoom(null);
+    setSelectedMethod(null);
+    setSenderNumber('');
+    setTxnId('');
   };
 
   const submitPayment = async () => {
@@ -81,11 +95,15 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
         timestamp: new Date().toISOString()
       };
       await addDoc(collection(db, 'orders'), orderData);
-      alert("অনুরোধ পাঠানো হয়েছে! অ্যাডমিন দ্রুত আপনার ট্রানজিশন যাচাই করবেন।");
+      
+      // পেমেন্ট সাকসেস পপ-আপ দেখানো
       setPaymentModal(false);
+      setShowSuccessModal(true);
+      
+      // ফরম পরিষ্কার করা
+      setSelectedMethod(null);
       setSenderNumber('');
       setTxnId('');
-      setSelectedMethod(null);
     } catch (e) {
       alert("সাবমিট করতে সমস্যা হয়েছে। পুনরায় চেষ্টা করুন।");
     } finally {
@@ -161,11 +179,11 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
       {/* Payment Modal */}
       {paymentModal && selectedRoom && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setPaymentModal(false)}></div>
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={closePaymentModal}></div>
           <div className="relative w-full max-w-md glass-card rounded-[40px] border-white/20 p-8 animate-in zoom-in duration-300">
             <div className="flex justify-between items-center mb-8">
               <h3 className="font-orbitron text-xl font-black text-white uppercase italic">Secure Checkout</h3>
-              <button onClick={() => setPaymentModal(false)} className="p-2 text-gray-500 hover:text-white"><X size={20}/></button>
+              <button onClick={closePaymentModal} className="p-2 text-gray-500 hover:text-white"><X size={20}/></button>
             </div>
 
             {!selectedMethod ? (
@@ -202,8 +220,27 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
         </div>
       )}
 
-      {/* Match Details Modal (Visible after approval) */}
-      {selectedRoom && !paymentModal && (
+      {/* পেমেন্ট সাকসেস পপ-আপ */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-xl" onClick={() => setShowSuccessModal(false)}></div>
+          <div className="relative w-full max-w-md glass-card rounded-[40px] border-white/20 p-10 text-center animate-in zoom-in duration-300 shadow-[0_0_100px_rgba(139,92,246,0.1)]">
+             <div className="w-20 h-20 bg-purple-600/20 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-inner">
+                <PartyPopper size={40} className="text-purple-400" />
+             </div>
+             <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter mb-4">অনুরোধ পাঠানো হয়েছে!</h3>
+             <p className="text-sm font-bold text-gray-300 leading-relaxed mb-10">
+               দয়া করে অপেক্ষা করুন, আমাদের অ্যাডমিন পেমেন্ট যাচাই করে স্লট দিবে। তখন আপনি ম্যাচের ডিটেইলস দেখতে পাবেন।
+             </p>
+             <button onClick={() => { setShowSuccessModal(false); setSelectedRoom(null); }} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-purple-600/20 hover:scale-[1.02] transition-all">
+                ঠিক আছে
+             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Match Details Modal (কেবল এপ্রুভড ইউজারদের জন্য) */}
+      {selectedRoom && !paymentModal && !showSuccessModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedRoom(null)}></div>
           <div className="relative w-full max-w-4xl glass-card border-white/20 rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -220,7 +257,6 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
                  <div className="text-center py-10"><Trophy className="mx-auto text-purple-500 mb-4" size={48}/> <p className="text-gray-400 uppercase font-bold text-xs">ম্যাচ শেষ হয়েছে। রেজাল্ট শীঘ্রই আপডেট করা হবে।</p></div>
                ) : (
                  <>
-                   {/* Conditional Display of ID/Password or Waiting Message */}
                    {(!selectedRoom.roomId || selectedRoom.roomId.trim() === "") && (!selectedRoom.password || selectedRoom.password.trim() === "") ? (
                       <div className="p-10 bg-purple-600/5 border border-dashed border-purple-500/20 rounded-3xl flex flex-col items-center justify-center text-center space-y-4 animate-pulse">
                         <MessageCircle size={40} className="text-purple-500 opacity-50" />

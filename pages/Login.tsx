@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Mail, Lock, Check, User, UserPlus, Calendar, Phone, Loader2 } from 'lucide-react';
+import { LogIn, Mail, Lock, Check, User, UserPlus, Loader2, XCircle, Info, AlertTriangle } from 'lucide-react';
 import { auth, googleProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, db, doc, setDoc, getDoc } from '../firebase';
 
 const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isBlobUrl, setIsBlobUrl] = useState(false);
   const navigate = useNavigate();
 
   // Form States
@@ -13,8 +15,13 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [dob, setDob] = useState('');
+
+  useEffect(() => {
+    // Check if the app is running in a blob environment
+    if (window.location.protocol === 'blob:' || window.location.href.startsWith('blob:')) {
+      setIsBlobUrl(true);
+    }
+  }, []);
 
   if (currentUser) {
     return (
@@ -37,20 +44,23 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
   }
 
   const handleGoogleLogin = async () => {
+    if (isBlobUrl) {
+      setErrorMessage("এই প্রিভিউ মোডে গুগল লগইন সম্ভব নয়। দয়া করে ইমেইল/পাসওয়ার্ড ব্যবহার করুন।");
+      return;
+    }
+    
     setAuthLoading(true);
+    setErrorMessage(null);
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-
-      if (user) {
-        const userDocRef = doc(db, 'users', user.uid);
+      if (result.user) {
+        const userDocRef = doc(db, 'users', result.user.uid);
         const userDoc = await getDoc(userDocRef);
-
         if (!userDoc.exists()) {
           await setDoc(userDocRef, {
-            uid: user.uid,
-            fullName: user.displayName || 'Google User',
-            email: user.email,
+            uid: result.user.uid,
+            fullName: result.user.displayName || 'Google User',
+            email: result.user.email,
             role: 'player',
             createdAt: new Date().toISOString()
           });
@@ -58,13 +68,11 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
         navigate('/');
       }
     } catch (err: any) {
-      console.error("Google Auth Error:", err);
+      console.error("Google Auth Error Detail:", err);
       if (err.code === 'auth/unauthorized-domain') {
-        alert("Domain Not Authorized! \n\nআপনার ফায়ারবেস কনসোলে গিয়ে এই ডোমেইনটি (Domain) 'Authorized Domains' লিস্টে যোগ করতে হবে। বিস্তারিত জানতে 'AUTH_FIX_GUIDE_BN.txt' ফাইলটি দেখুন।");
-      } else if (err.code === 'auth/popup-blocked') {
-        alert("আপনার ব্রাউজারে পপআপ ব্লক করা আছে। অনুগ্রহ করে পপআপ এলাউ করুন।");
+        setErrorMessage("আপনার ডোমেইনটি ফায়ারবেসে অনুমোদিত নয়। 'AUTH_FIX_GUIDE' দেখুন।");
       } else {
-        alert("গুগল লগইন ব্যর্থ হয়েছে: " + err.message);
+        setErrorMessage("গুগল লগইন সমস্যা হয়েছে, দয়া করে সাইন আপ অথবা ইমেইল দিয়ে লগইন করুন।");
       }
     } finally {
       setAuthLoading(false);
@@ -74,36 +82,27 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
   const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
-
+    setErrorMessage(null);
     try {
       if (isLoginMode) {
         await signInWithEmailAndPassword(auth, email, password);
         navigate('/');
       } else {
         if (password !== confirmPassword) {
-          alert("পাসওয়ার্ড মিলেনি!");
-          setAuthLoading(false);
-          return;
-        }
-        if (!email || !password || !fullName) {
-          alert("অনুগ্রহ করে সব তথ্য প্রদান করুন।");
+          setErrorMessage("পাসওয়ার্ড মিলেনি!");
           setAuthLoading(false);
           return;
         }
         const res = await createUserWithEmailAndPassword(auth, email, password);
         await setDoc(doc(db, 'users', res.user.uid), {
           uid: res.user.uid,
-          fullName,
-          email,
-          phone: phone || '',
-          dob: dob || '',
-          role: 'player',
-          createdAt: new Date().toISOString()
+          fullName, email,
+          role: 'player', createdAt: new Date().toISOString()
         });
         navigate('/');
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      setErrorMessage(err.message);
     } finally {
       setAuthLoading(false);
     }
@@ -120,70 +119,58 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
           <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px] italic">টুনামেন্ট খেলার জন্য লগইন করুন</p>
         </div>
 
+        {errorMessage && (
+          <div className="mb-8 p-5 bg-red-600/10 border border-red-500/30 rounded-[24px] flex items-center gap-4 animate-in shake duration-500">
+            <XCircle className="text-red-500 shrink-0" size={20} />
+            <p className="text-sm text-red-100 font-bold leading-relaxed">{errorMessage}</p>
+          </div>
+        )}
+
         <form onSubmit={handleAuthAction} className="space-y-5">
           {!isLoginMode && (
-            <>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Full Name</label>
-                <div className="relative">
-                  <User className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                  <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="আপনার নাম লিখুন" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
-                </div>
+            <div className="space-y-2 animate-in slide-in-from-left duration-300">
+              <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Full Name</label>
+              <div className="relative">
+                <User className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                <input type="text" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="আপনার নাম লিখুন" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Date of Birth</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                    <input type="date" value={dob} onChange={e => setDob(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Phone Number</label>
-                  <div className="relative">
-                    <Phone className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                    <input type="text" value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
-                  </div>
-                </div>
-              </div>
-            </>
+            </div>
           )}
           
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="genix@gmail.com" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="example@mail.com" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
             </div>
           </div>
 
-          <div className={`grid ${!isLoginMode ? 'grid-cols-2 gap-4' : 'grid-cols-1'}`}>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
+            </div>
+          </div>
+
+          {!isLoginMode && (
             <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Password</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Confirm Password</label>
               <div className="relative">
-                <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
+                <Check className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••••" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
               </div>
             </div>
-            {!isLoginMode && (
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Confirm Password</label>
-                <div className="relative">
-                  <Check className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                  <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••••" className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-sm focus:border-purple-500 outline-none transition-all" />
-                </div>
-              </div>
-            )}
-          </div>
+          )}
 
           <button type="submit" disabled={authLoading} className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-xs tracking-widest shadow-xl shadow-purple-600/30 hover:bg-purple-700 transition-all flex items-center justify-center gap-2 mt-4">
-            {authLoading ? <Loader2 size={18} className="animate-spin" /> : isLoginMode ? <><LogIn size={18}/> <span>Enter Arena</span></> : <><UserPlus size={18}/> <span>Create Account</span></>}
+            {authLoading ? <Loader2 size={18} className="animate-spin" /> : isLoginMode ? <span>Login to Account</span> : <span>Create Account</span>}
           </button>
         </form>
 
         <div className="mt-8 flex items-center gap-4">
            <div className="h-[1px] bg-white/5 flex-grow"></div>
-           <span className="text-[8px] font-black text-gray-600 uppercase">Universal Sign-in</span>
+           <span className="text-[8px] font-black text-gray-600 uppercase italic">Or Use One-Tap Auth</span>
            <div className="h-[1px] bg-white/5 flex-grow"></div>
         </div>
 
@@ -202,7 +189,7 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
         </button>
 
         <p className="text-center mt-10 text-[10px] font-black uppercase text-gray-500 tracking-widest">
-          {isLoginMode ? "নতুন ইউজার? " : "আগে থেকেই অ্যাকাউন্ট আছে? "}
+          {isLoginMode ? "অ্যাকাউন্ট নেই? " : "আগে থেকেই অ্যাকাউন্ট আছে? "}
           <button onClick={() => setIsLoginMode(!isLoginMode)} className="ml-2 text-purple-400 hover:text-purple-300 font-black italic">
             {isLoginMode ? "Sign Up" : "Back to Login"}
           </button>

@@ -5,6 +5,35 @@ export enum RoomStatus {
   COMPLETE = 'Complete'
 }
 
+export type UserRole = 'owner' | 'admin' | 'moderator' | 'player';
+
+export type PlayerPosition = 
+  | 'Captain' 
+  | '1st Rusher' 
+  | '2nd Rusher' 
+  | 'Supporter' 
+  | 'Sniper Player' 
+  | 'Backup Player' 
+  | 'Coach' 
+  | 'Manager';
+
+export type SpecialBadge = 
+  | 'Best Rusher' 
+  | 'Best IGL' 
+  | 'Best Supporter' 
+  | 'Best Sniper';
+
+export interface UserProfile {
+  uid: string;
+  fullName: string;
+  photoURL?: string;
+  role: UserRole;
+  position?: PlayerPosition;
+  specialBadges?: SpecialBadge[];
+  teamId?: string;
+  email: string;
+}
+
 export interface TeamMatchStats {
   position: number;
   kills: number;
@@ -26,7 +55,7 @@ export interface Room {
   thumbnail: string;
   roomId?: string;
   password?: string;
-  waitingMessage?: string; // New: Custom message when ID/Pass is empty
+  waitingMessage?: string;
   teams: string[]; 
   results?: MatchResult[];
   matchCount: number;
@@ -60,15 +89,19 @@ export interface Team {
   player2Name?: string;
   player2Uid?: string;
   player2AccountName?: string;
+  player2Position?: PlayerPosition;
   player3Name?: string;
   player3Uid?: string;
   player3AccountName?: string;
+  player3Position?: PlayerPosition;
   player4Name?: string;
   player4Uid?: string;
   player4AccountName?: string;
+  player4Position?: PlayerPosition;
   player5Name?: string;
   player5Uid?: string;
   player5AccountName?: string;
+  player5Position?: PlayerPosition;
   phone: string;
   registrationDate: string;
   isApproved: boolean; 
