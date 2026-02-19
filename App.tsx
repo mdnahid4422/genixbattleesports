@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { LogIn, Shield, LayoutGrid, List, Users, Trophy, Menu, X, MessageSquare, AlertCircle, UserCircle } from 'lucide-react';
+import { LogIn, Shield, LayoutGrid, List, Users, Trophy, Menu, X, MessageSquare, AlertCircle, UserCircle, LogOut } from 'lucide-react';
 import { AppData, UserProfile } from './types';
 import { INITIAL_DATA } from './data';
-import { auth, db, onAuthStateChanged, doc, getDoc, onSnapshot } from './firebase';
+import { auth, db, onAuthStateChanged, doc, getDoc, onSnapshot, signOut } from './firebase';
 
 // Pages
 import Home from './pages/Home';
@@ -53,6 +53,16 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: UserPro
     navigate(to);
     setIsMenuOpen(false);
     window.scrollTo(0, 0);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setIsMenuOpen(false);
+      navigate('/login');
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   const NavLink = ({ to, children, icon: Icon }: { to: string; children?: React.ReactNode; icon: any }) => {
@@ -127,15 +137,37 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: UserPro
       {isMenuOpen && (
         <div className="fixed inset-0 z-[90] lg:hidden">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)}></div>
-          <div className="absolute right-0 top-20 bottom-0 w-72 glass-card border-l border-white/10 flex flex-col p-6 space-y-4 animate-in slide-in-from-right duration-300">
-             <NavLink to="/" icon={LayoutGrid}>Home</NavLink>
-             <NavLink to="/rooms" icon={List}>Rooms</NavLink>
-             <NavLink to="/registration" icon={Shield}>{hasTeam ? 'My Team' : 'Join'}</NavLink>
-             <NavLink to="/teams" icon={Users}>Teams</NavLink>
-             <NavLink to="/points" icon={Trophy}>Points</NavLink>
-             <NavLink to="/rules" icon={List}>Rules</NavLink>
-             <NavLink to="/contact" icon={MessageSquare}>Contact</NavLink>
-             {isAdminOrAbove && <NavLink to="/admin" icon={Shield}>Admin CP</NavLink>}
+          <div className="absolute right-0 top-0 bottom-0 w-72 glass-card border-l border-white/10 flex flex-col p-6 space-y-4 animate-in slide-in-from-right duration-300">
+             <div className="flex items-center justify-between mb-8 pt-4">
+               <div className="flex items-center space-x-2">
+                 <img src="/image/logo.png" className="w-8 h-8 object-contain" alt="Logo" />
+                 <span className="font-orbitron font-black text-white italic text-sm">Navigation</span>
+               </div>
+               <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-white/5 rounded-lg text-gray-400"><X size={20}/></button>
+             </div>
+             
+             <div className="flex-grow space-y-2">
+               <NavLink to="/" icon={LayoutGrid}>Home</NavLink>
+               <NavLink to="/rooms" icon={List}>Rooms</NavLink>
+               <NavLink to="/registration" icon={Shield}>{hasTeam ? 'My Team' : 'Join'}</NavLink>
+               <NavLink to="/teams" icon={Users}>Teams</NavLink>
+               <NavLink to="/points" icon={Trophy}>Points</NavLink>
+               <NavLink to="/rules" icon={List}>Rules</NavLink>
+               <NavLink to="/contact" icon={MessageSquare}>Contact</NavLink>
+               {isAdminOrAbove && <NavLink to="/admin" icon={Shield}>Admin CP</NavLink>}
+             </div>
+
+             {currentUser && (
+               <div className="mt-auto pt-6 border-t border-white/10">
+                 <button 
+                   onClick={handleLogout}
+                   className="flex items-center space-x-3 px-5 py-4 rounded-2xl transition-all w-full bg-red-600/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white group"
+                 >
+                   <LogOut size={18} className="group-hover:rotate-12 transition-transform" />
+                   <span className="font-black text-[11px] uppercase tracking-[0.2em] italic">Sign Out Account</span>
+                 </button>
+               </div>
+             )}
           </div>
         </div>
       )}
@@ -172,7 +204,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Real-time listener for user profile to handle roles/badges updates instantly
         const unsubUser = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();

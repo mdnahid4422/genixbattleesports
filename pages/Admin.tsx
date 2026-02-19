@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { LogOut, Shield, Trophy, Users, Target, Zap, Loader2, Save, Trash2, Edit3, X, Lock, UploadCloud, CreditCard, MessageSquare, AlertTriangle, Star, Search, CheckCircle2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { LogOut, Shield, Trophy, Users, Target, Zap, Loader2, Save, Trash2, Edit3, X, Lock, UploadCloud, CreditCard, MessageSquare, AlertTriangle, Star, Search, CheckCircle2, UserCircle } from 'lucide-react';
 import { auth, signOut, db, doc, setDoc, updateDoc, collection, onSnapshot, deleteDoc, query, where, getDocs } from '../firebase';
 import { AppData, Room, RoomStatus, Order, UserProfile, SpecialBadge, UserRole } from '../types';
 
@@ -12,13 +13,13 @@ interface AdminProps {
 
 const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
   const [activeTab, setActiveTab] = useState<'rooms' | 'points' | 'teams' | 'orders' | 'badges'>('rooms');
-  const [syncing, setSyncing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [roomFormData, setRoomFormData] = useState<Partial<Room>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const navigate = useNavigate();
 
   const isOwner = currentUser?.role === 'owner';
   const isAdmin = currentUser?.role === 'admin';
@@ -54,12 +55,24 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
         const updatedTeams = Array.from(new Set([...(room.teams || []), order.teamName]));
         const updatedRooms = [...appDb.rooms];
         updatedRooms[roomIndex] = { ...room, teams: updatedTeams, remainingSlots: Math.max(0, room.totalSlots - updatedTeams.length) };
-        const updatedDb = { ...appDb, rooms: updatedRooms };
-        setDb(updatedDb);
-        await setDoc(doc(db, 'app', 'global_data'), updatedDb);
+        
+        // Sanitize before saving to Firestore to prevent circular structure error
+        const sanitizedDb = JSON.parse(JSON.stringify({ 
+          rooms: updatedRooms,
+          posters: appDb.posters || [],
+          teams: appDb.teams || [],
+          points: appDb.points || [],
+          rules: appDb.rules || []
+        }));
+        
+        setDb(sanitizedDb);
+        await setDoc(doc(db, 'app', 'global_data'), sanitizedDb);
       }
       alert("পেমেন্ট এপ্রুভ করা হয়েছে!");
-    } catch (e) { alert("এপ্রুভ করতে সমস্যা হয়েছে।"); }
+    } catch (e) { 
+      console.error(e);
+      alert("এপ্রুভ করতে সমস্যা হয়েছে।"); 
+    }
   };
 
   const assignSpecialBadge = async (uid: string, badge: SpecialBadge) => {
@@ -74,7 +87,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
   };
 
   const updateUserRole = async (uid: string, role: UserRole) => {
-    if (!isOwner) return; // Only Owner can change roles
+    if (!isOwner) return; 
     try {
       await updateDoc(doc(db, 'users', uid), { role });
       alert("ইউজার রোল আপডেট হয়েছে!");
@@ -89,9 +102,18 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
     } else {
       newRooms = [{ ...roomFormData } as Room, ...newRooms];
     }
-    const updatedDb = { ...appDb, rooms: newRooms };
-    setDb(updatedDb);
-    await setDoc(doc(db, 'app', 'global_data'), updatedDb);
+
+    // Sanitize data to avoid circular reference issues with Firestore setDoc
+    const sanitizedDb = JSON.parse(JSON.stringify({ 
+      rooms: newRooms,
+      posters: appDb.posters || [],
+      teams: appDb.teams || [],
+      points: appDb.points || [],
+      rules: appDb.rules || []
+    }));
+    
+    setDb(sanitizedDb);
+    await setDoc(doc(db, 'app', 'global_data'), sanitizedDb);
     setIsModalOpen(false);
   };
 
@@ -102,7 +124,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
            <AlertTriangle size={60} className="text-red-500 mx-auto mb-6 opacity-50" />
            <h3 className="font-orbitron text-2xl font-black text-white uppercase italic mb-4">Access Restricted</h3>
            <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-8 leading-relaxed italic">আপনার কাছে স্টাফ অ্যাক্সেস নেই।</p>
-           <button onClick={() => window.location.href='/'} className="w-full py-4 bg-red-600/10 text-red-500 border border-red-500/20 rounded-2xl font-black uppercase text-xs tracking-widest">Exit</button>
+           <button onClick={() => navigate('/')} className="w-full py-4 bg-red-600/10 text-red-500 border border-red-500/20 rounded-2xl font-black uppercase text-xs tracking-widest">Exit</button>
         </div>
       </div>
     );
@@ -195,11 +217,22 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
              
              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 {allUsers.filter(u => (u.fullName || '').toLowerCase().includes((userSearch || '').toLowerCase())).map(u => (
-                  <div key={u.uid} className="glass-card p-6 rounded-3xl border-white/10 flex items-center justify-between gap-6">
+                  <div 
+                    key={u.uid} 
+                    className="glass-card p-6 rounded-3xl border-white/10 flex items-center justify-between gap-6 hover:border-purple-500/40 transition-all cursor-pointer group/user"
+                    onClick={(e) => {
+                      if (!(e.target as HTMLElement).closest('button') && !(e.target as HTMLElement).closest('select')) {
+                        navigate(`/profile/${u.uid}`);
+                      }
+                    }}
+                  >
                     <div className="flex items-center gap-4">
-                       <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-12 h-12 rounded-2xl object-cover" />
+                       <img src={u.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${u.uid}`} className="w-12 h-12 rounded-2xl object-cover shadow-lg border border-white/5" />
                        <div>
-                         <p className="text-sm font-black text-white italic uppercase">{u.fullName}</p>
+                         <p className="text-sm font-black text-white italic uppercase group-hover/user:text-purple-400 transition-colors flex items-center gap-2">
+                           {u.fullName}
+                           <UserCircle size={10} className="opacity-0 group-hover/user:opacity-100 transition-opacity" />
+                         </p>
                          <p className="text-[9px] text-gray-500 font-bold uppercase">{u.role} | {u.position || 'Recruit'}</p>
                        </div>
                     </div>
@@ -208,7 +241,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
                          <button 
                            key={b} 
                            onClick={() => assignSpecialBadge(u.uid, b as SpecialBadge)}
-                           className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-tighter border transition-all ${u.specialBadges?.includes(b as SpecialBadge) ? 'bg-purple-600 border-purple-500 text-white' : 'bg-white/5 border-white/10 text-gray-500 hover:text-white'}`}
+                           className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-tighter border transition-all ${u.specialBadges?.includes(b as SpecialBadge) ? 'bg-purple-600 border-purple-500 text-white shadow-lg' : 'bg-white/5 border-white/10 text-gray-500 hover:text-white'}`}
                          >
                             {b}
                          </button>
@@ -217,7 +250,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
                          <select 
                            value={u.role} 
                            onChange={e => updateUserRole(u.uid, e.target.value as UserRole)}
-                           className="bg-black/50 border border-purple-500/30 rounded-lg px-3 py-1.5 text-[8px] font-black text-purple-400 uppercase outline-none"
+                           className="bg-black/50 border border-purple-500/30 rounded-lg px-3 py-1.5 text-[8px] font-black text-purple-400 uppercase outline-none focus:border-purple-500"
                          >
                             <option value="player">Player</option>
                             <option value="moderator">Moderator</option>

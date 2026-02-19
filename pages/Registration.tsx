@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, User, Phone, Camera, Loader2, Mail, Edit3, Eye, ArrowRight, UserPlus, Search, Check, X, Clock, CheckCircle, Target } from 'lucide-react';
+import { Shield, User, Phone, Camera, Loader2, Mail, Edit3, Eye, ArrowRight, UserPlus, Search, Check, X, Clock, CheckCircle, Target, UserCircle } from 'lucide-react';
 import { AppData, Team, PlayerPosition } from '../types';
 import { auth, db, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, onAuthStateChanged } from '../firebase';
 
@@ -11,7 +11,7 @@ interface RegistrationProps {
 }
 
 const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<{ uid: string; email: string; displayName?: string } | null>(null);
   const [viewState, setViewState] = useState<'choice' | 'register' | 'join_list' | 'view_team'>('choice');
   const [userRegistration, setUserRegistration] = useState<Team | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -38,7 +38,8 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        setCurrentUser(user);
+        // Only store serializable properties from the circular User object
+        setCurrentUser({ uid: user.uid, email: user.email || '', displayName: user.displayName || undefined });
         try {
           const regDoc = await getDoc(doc(db, 'registrations', user.uid));
           if (regDoc.exists()) {
@@ -51,6 +52,8 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
             });
           }
         } catch (e) {}
+      } else {
+        setCurrentUser(null);
       }
       setInitialLoading(false); 
     });
@@ -118,7 +121,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
 
     try {
       await setDoc(doc(db, 'registrations', currentUser.uid), payload);
-      // Update Captain's profile with position
       await updateDoc(doc(db, 'users', currentUser.uid), { position: 'Captain', teamId: currentUser.uid });
       
       setUserRegistration(payload as any);
@@ -138,7 +140,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       await updateDoc(doc(db, `registrations/${currentUser.uid}/requests`, req.userId), { status: 'accepted' });
       await updateDoc(doc(db, 'users_membership', req.userId), { status: 'accepted' });
       
-      // Update the player's profile with their assigned role
       const playerPos = (userRegistration as any)[`${req.slotKey}Position`] || 'Player';
       await updateDoc(doc(db, 'users', req.userId), { 
         position: playerPos, 
@@ -174,7 +175,7 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   }
 
   if (viewState === 'view_team' && userRegistration && !isEditing) {
-    const isCaptain = currentUser.uid === userRegistration.userUid;
+    const isCaptain = currentUser?.uid === userRegistration.userUid;
     return (
       <div className="py-12 px-4 max-w-5xl mx-auto animate-in fade-in">
         <div className="glass-card rounded-[40px] border-white/10 overflow-hidden shadow-2xl">
@@ -188,28 +189,54 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
           
           <div className="p-8 md:p-12 grid grid-cols-1 lg:grid-cols-2 gap-12">
             <div className="space-y-6">
-              <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Roster Assignments</h4>
+              <div className="flex items-center justify-between border-l-4 border-purple-500 pl-4">
+                 <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest italic">Roster Assignments</h4>
+                 <p className="text-[8px] font-bold text-gray-600 uppercase">Click name to view profile</p>
+              </div>
               <div className="space-y-3">
-                <RosterRow name={userRegistration.captainName} role="Captain" active />
-                {[2, 3, 4, 5].map(num => (
-                  <RosterRow 
-                    key={num}
-                    name={(userRegistration as any)[`player${num}Name`]} 
-                    role={(userRegistration as any)[`player${num}Position`]} 
-                    active={!!(userRegistration as any)[`player${num}Uid`]} 
-                  />
-                ))}
+                <RosterRow 
+                   name={userRegistration.captainName} 
+                   role="Captain" 
+                   active 
+                   onClick={() => navigate(`/profile/${userRegistration.userUid}`)}
+                />
+                {[2, 3, 4, 5].map(num => {
+                  const uid = (userRegistration as any)[`player${num}Uid`];
+                  return (
+                    <RosterRow 
+                      key={num}
+                      name={(userRegistration as any)[`player${num}Name`]} 
+                      role={(userRegistration as any)[`player${num}Position`]} 
+                      active={!!uid} 
+                      onClick={() => uid && navigate(`/profile/${uid}`)}
+                    />
+                  );
+                })}
               </div>
             </div>
 
-            {isCaptain && (
+            {isCaptain && currentUser && (
               <div className="space-y-6">
                 <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-yellow-500 pl-4 italic">Join Requests</h4>
                 <div className="space-y-3">
                   {joinRequests.filter(r => r.status === 'pending').map(req => (
-                    <div key={req.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
-                      <div><p className="text-sm font-black text-white italic">{req.playerName}</p><p className="text-[10px] text-gray-500 font-bold uppercase">{req.userName}</p></div>
-                      <button onClick={() => handleApproveRequest(req)} className="p-2 bg-green-600/20 text-green-500 rounded-lg"><Check size={16}/></button>
+                    <div key={req.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between hover:border-yellow-500/30 transition-all">
+                      <div 
+                        className="cursor-pointer group/req flex items-center gap-3" 
+                        onClick={() => navigate(`/profile/${req.userId}`)}
+                      >
+                        <div className="w-10 h-10 rounded-xl bg-purple-600/10 flex items-center justify-center text-purple-400">
+                          <UserCircle size={20} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-white italic group-hover/req:text-purple-400 transition-colors flex items-center gap-2">
+                             {req.playerName}
+                             <ArrowRight size={10} className="opacity-0 group-hover/req:opacity-100 transition-all" />
+                          </p>
+                          <p className="text-[10px] text-gray-500 font-bold uppercase">{req.userName}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => handleApproveRequest(req)} className="p-3 bg-green-600/20 text-green-500 rounded-xl hover:bg-green-600 hover:text-white transition-all shadow-lg"><Check size={16}/></button>
                     </div>
                   ))}
                   {joinRequests.filter(r => r.status === 'pending').length === 0 && <p className="text-[10px] text-gray-600 italic">No pending requests.</p>}
@@ -286,9 +313,12 @@ const ChoiceCard = ({ title, desc, icon, onClick, primary }: any) => (
   </button>
 );
 
-const RosterRow = ({ name, role, active }: any) => (
-  <div className={`flex items-center justify-between p-4 rounded-2xl border ${active ? 'bg-purple-600/10 border-purple-500/30' : 'bg-white/2 border-white/5 opacity-40'}`}>
-    <span className="text-sm font-black italic text-white uppercase">{name || 'EMPTY'}</span>
+const RosterRow = ({ name, role, active, onClick }: any) => (
+  <div 
+    onClick={onClick}
+    className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${active ? 'bg-purple-600/10 border-purple-500/30 cursor-pointer hover:bg-purple-600/20' : 'bg-white/2 border-white/5 opacity-40'}`}
+  >
+    <span className="text-sm font-black italic text-white uppercase group-hover:text-purple-400">{name || 'EMPTY'}</span>
     <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">{role}</span>
   </div>
 );

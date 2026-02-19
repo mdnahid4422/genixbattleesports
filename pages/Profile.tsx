@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { UserProfile, SpecialBadge, PlayerPosition, UserRole } from '../types';
-import { Camera, Loader2, Save, LogOut, CheckCircle2, Shield, Target, Trophy, Award, Zap, Star, ArrowLeft, UserPlus } from 'lucide-react';
+import { Camera, Loader2, Save, LogOut, CheckCircle2, Shield, Target, Trophy, Award, Zap, Star, ArrowLeft, UserPlus, XCircle } from 'lucide-react';
 import { db, doc, updateDoc, auth, signOut, onSnapshot, setDoc } from '../firebase';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -36,7 +36,6 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
         setFullName(data.fullName || '');
         setFetching(false);
       } else {
-        // If it's the user's own profile but document doesn't exist in Firestore, create it.
         if (isOwnProfile && auth.currentUser) {
           const newProfile: UserProfile = {
             uid: auth.currentUser.uid,
@@ -47,7 +46,6 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
           };
           try {
             await setDoc(doc(db, 'users', auth.currentUser.uid), newProfile);
-            // The snapshot will trigger again with the new data
           } catch (err) {
             console.error("Error auto-creating profile:", err);
             setProfileData(null);
@@ -69,15 +67,18 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
   if (fetching) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
-        <Loader2 size={40} className="animate-spin text-purple-500 mb-4" />
-        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Accessing Operative Files...</p>
+        <div className="relative">
+           <Loader2 size={48} className="animate-spin text-purple-500 mb-4" />
+           <div className="absolute inset-0 blur-xl bg-purple-500/20 animate-pulse"></div>
+        </div>
+        <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] italic">Accessing Operative Files...</p>
       </div>
     );
   }
 
   if (!profileData) {
     return (
-      <div className="py-20 px-4 text-center max-w-md mx-auto">
+      <div className="py-20 px-4 text-center max-w-md mx-auto animate-in zoom-in">
         <div className="glass-card p-10 rounded-[40px] border-red-500/20">
           <XCircle size={60} className="text-red-500 mx-auto mb-6 opacity-40" />
           <h2 className="text-2xl font-black text-white uppercase italic mb-4">Profile Missing</h2>
@@ -97,8 +98,7 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const MAX_DIM = 400; 
-        let width = img.width;
-        let height = img.height;
+        let width = img.width, height = img.height;
         if (width > height) { if (width > MAX_DIM) { height *= MAX_DIM / width; width = MAX_DIM; } }
         else { if (height > MAX_DIM) { width *= MAX_DIM / height; height = MAX_DIM; } }
         canvas.width = width; canvas.height = height;
@@ -142,30 +142,37 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
-    navigate('/');
+    if (window.confirm("আপনি কি নিশ্চিতভাবে লগ আউট করতে চান?")) {
+      await signOut(auth);
+      navigate('/login');
+    }
   };
 
   return (
-    <div className="py-12 px-4 md:px-8 max-w-4xl mx-auto min-h-screen animate-in fade-in duration-500">
-      <div className="flex items-center gap-4 mb-8">
-         <button onClick={() => navigate(-1)} className="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all"><ArrowLeft size={20}/></button>
-         <div className="flex flex-col">
-            <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] italic leading-none">{isOwnProfile ? 'Control Center' : 'Operative Profile'}</h4>
-            <p className="text-[8px] font-bold text-purple-400 uppercase tracking-widest mt-1">Status: Active</p>
-         </div>
+    <div className="py-12 px-4 md:px-8 max-w-4xl mx-auto min-h-screen animate-in fade-in duration-700">
+      <div className="flex items-center gap-5 mb-12">
+        <button onClick={() => navigate(-1)} className="p-3 bg-white/5 border border-white/10 rounded-2xl text-gray-400 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-xl"><ArrowLeft size={20}/></button>
+        <div className="flex flex-col">
+           <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] italic leading-none">{isOwnProfile ? 'Control Center' : 'Operative Profile'}</h4>
+           <div className="flex items-center gap-2 mt-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <p className="text-[8px] font-bold text-purple-400 uppercase tracking-widest">Protocol: Online</p>
+           </div>
+        </div>
       </div>
 
-      <div className="glass-card rounded-[48px] border-white/10 overflow-hidden shadow-2xl relative">
-        <div className="h-40 bg-gradient-to-r from-purple-900/40 via-blue-900/40 to-purple-900/40"></div>
+      <div className="glass-card rounded-[48px] border-white/10 overflow-hidden shadow-2xl relative animate-in slide-in-from-bottom duration-500">
+        <div className="h-48 bg-gradient-to-r from-purple-900/40 via-blue-900/40 to-purple-900/40 relative overflow-hidden">
+           <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #8b5cf6 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+        </div>
         
-        <div className="px-8 pb-12 -mt-20">
-          <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-12">
+        <div className="px-8 pb-12 -mt-24 relative z-10">
+          <div className="flex flex-col md:flex-row items-center md:items-end gap-8 mb-16">
             <div className="relative group">
-              <div className="w-40 h-40 rounded-[48px] border-4 border-[#060608] bg-[#060608] overflow-hidden shadow-2xl relative">
+              <div className="w-44 h-44 rounded-[48px] border-8 border-[#060608] bg-[#060608] overflow-hidden shadow-2xl relative group-hover:scale-105 transition-transform duration-500">
                 {uploading && (
                   <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-10">
-                    <Loader2 size={30} className="animate-spin text-purple-400" />
+                    <Loader2 size={32} className="animate-spin text-purple-400" />
                   </div>
                 )}
                 <img src={profileData.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileData.uid}`} className="w-full h-full object-cover" alt="Profile" />
@@ -174,7 +181,7 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
                     onClick={() => fileInputRef.current?.click()}
                     className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
                   >
-                    <Camera size={24} className="text-white" />
+                    <Camera size={28} className="text-white" />
                   </button>
                 )}
               </div>
@@ -182,88 +189,93 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
             </div>
             
             <div className="text-center md:text-left flex-grow">
-               <div className="flex items-center justify-center md:justify-start gap-3">
-                 <h2 className="font-orbitron text-4xl font-black italic text-white uppercase tracking-tighter">{profileData.fullName}</h2>
-                 <CheckCircle2 size={24} className="text-blue-400" />
+               <div className="flex items-center justify-center md:justify-start gap-4 mb-2">
+                 <h2 className="font-orbitron text-4xl md:text-5xl font-black italic text-white uppercase tracking-tighter neon-text-purple">{profileData.fullName}</h2>
+                 <CheckCircle2 size={24} className="text-blue-400 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                </div>
-               <p className="text-gray-500 font-bold uppercase tracking-[0.3em] text-[10px] mt-1 italic">Operative Protocol {profileData.uid.slice(0, 8)}</p>
+               <p className="text-gray-500 font-bold uppercase tracking-[0.4em] text-[10px] italic">Verified Operative Identity #{profileData.uid.slice(0, 8)}</p>
             </div>
-
-            {isOwnProfile && (
-              <button onClick={handleLogout} className="px-6 py-3 bg-red-600/10 text-red-500 border border-red-500/20 rounded-2xl font-black uppercase text-[10px] flex items-center gap-2 hover:bg-red-600 hover:text-white transition-all">
-                 <LogOut size={16} /> Exit Account
-              </button>
-            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-             {/* Badges Section */}
-             <div className="space-y-8">
-                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Achievement Badges</h4>
+             <div className="space-y-10">
+                <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-purple-500 pl-4 italic">Achievement Matrix</h4>
                 <div className="space-y-4">
-                   {/* Level 1: Administrative */}
                    <BadgeItem 
                      type="admin" 
-                     icon={<Shield size={16}/>} 
+                     icon={<Shield size={18}/>} 
                      label={profileData.role} 
                      color={profileData.role === 'owner' ? 'from-red-600 to-orange-600' : profileData.role === 'admin' ? 'from-purple-600 to-blue-600' : profileData.role === 'moderator' ? 'from-yellow-600 to-orange-500' : 'from-gray-600 to-slate-700'} 
                    />
                    
-                   {/* Level 2: Team Role */}
                    <BadgeItem 
                      type="position" 
-                     icon={<Target size={16}/>} 
+                     icon={<Target size={18}/>} 
                      label={profileData.position || 'Recruit'} 
                      color="from-blue-600 to-cyan-600" 
                      active={!!profileData.position}
                    />
 
-                   {/* Level 3: Special Badges */}
-                   <div className="grid grid-cols-2 gap-3">
+                   <div className="grid grid-cols-2 gap-4">
                       {profileData.specialBadges && profileData.specialBadges.length > 0 ? profileData.specialBadges.map(b => (
                         <SpecialBadgeItem key={b} label={b} />
                       )) : (
-                        <div className="col-span-full py-4 text-center border border-dashed border-white/5 rounded-2xl text-[9px] font-black uppercase text-gray-600 italic">No Special Badges Earned Yet</div>
+                        <div className="col-span-full py-6 text-center border border-dashed border-white/10 rounded-3xl text-[9px] font-black uppercase text-gray-600 italic">No Special Badges Authorized</div>
                       )}
                    </div>
                 </div>
              </div>
 
-             {/* Personal Info Edit (Visible only to self) */}
              {isOwnProfile && (
-               <div className="space-y-8">
-                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">Update Protocol</h4>
-                  <div className="p-8 bg-white/5 rounded-[32px] border border-white/10 space-y-6">
-                     <div className="space-y-2">
-                       <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Display Name</label>
+               <div className="space-y-10">
+                  <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">Update Protocols</h4>
+                  <div className="p-8 md:p-10 bg-white/5 rounded-[40px] border border-white/10 space-y-8 shadow-inner">
+                     <div className="space-y-3">
+                       <label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">Public Operational Name</label>
                        <input 
                          type="text" 
                          value={fullName} 
                          onChange={e => setFullName(e.target.value)} 
-                         className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-sm font-bold focus:border-purple-500 outline-none transition-all"
+                         className="w-full bg-black/50 border border-white/10 rounded-[24px] p-5 text-white text-sm font-bold focus:border-purple-500 outline-none transition-all shadow-inner"
+                         placeholder="আপনার পূর্ণ নাম"
                        />
                      </div>
                      <button 
                        onClick={handleSaveName} 
                        disabled={loading}
-                       className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-purple-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                       className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-purple-600/30 hover:bg-purple-700 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 italic"
                      >
-                       {loading ? <Loader2 size={16} className="animate-spin" /> : <><Save size={16}/> Save Updates</>}
+                       {loading ? <Loader2 size={18} className="animate-spin" /> : <><Save size={18}/> Save Protocol Changes</>}
                      </button>
                   </div>
                </div>
              )}
 
              {!isOwnProfile && (
-               <div className="space-y-8">
+               <div className="space-y-10">
                   <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-green-500 pl-4 italic">Operative Summary</h4>
-                  <div className="p-8 bg-white/5 rounded-[32px] border border-white/10 flex flex-col items-center justify-center text-center space-y-4">
-                     <Trophy size={40} className="text-yellow-500 opacity-40" />
-                     <p className="text-sm font-bold text-gray-400 italic leading-relaxed">এই প্লেয়ারটি বর্তমানে GENIX Battle-এর একজন ভেরিফাইড মেম্বার হিসেবে আমাদের প্ল্যাটফর্মে যুক্ত আছেন।</p>
+                  <div className="p-10 bg-white/5 rounded-[40px] border border-white/10 flex flex-col items-center justify-center text-center space-y-6">
+                     <div className="w-20 h-20 rounded-full bg-yellow-500/10 flex items-center justify-center shadow-inner">
+                        <Trophy size={48} className="text-yellow-500 opacity-60" />
+                     </div>
+                     <p className="text-sm font-bold text-gray-400 italic leading-relaxed max-w-xs">এই প্লেয়ারটি বর্তমানে GENIX Battle-এর একজন ভেরিফাইড মেম্বার হিসেবে আমাদের প্ল্যাটফর্মে যুক্ত আছেন।</p>
                   </div>
                </div>
              )}
           </div>
+          
+          {/* Desktop Only Log Out Button at the bottom */}
+          {isOwnProfile && (
+            <div className="hidden lg:block mt-20 pt-10 border-t border-white/5">
+              <button 
+                onClick={handleLogout} 
+                className="w-full max-w-xs mx-auto px-6 py-5 bg-red-600/10 text-red-500 border border-red-500/20 rounded-[28px] font-black uppercase text-[11px] tracking-[0.25em] flex items-center justify-center gap-4 hover:bg-red-600 hover:text-white transition-all shadow-2xl group italic"
+              >
+                <LogOut size={20} className="group-hover:rotate-12 transition-transform" /> 
+                <span>Sign Out Account</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -286,12 +298,12 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
 };
 
 const BadgeItem = ({ icon, label, color, active = true }: any) => (
-  <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${active ? `bg-gradient-to-r ${color} border-white/10 text-white shadow-lg` : 'bg-white/5 border-white/5 text-gray-600 grayscale'}`}>
-     <div className="flex items-center gap-3">
-        <div className="p-2 bg-white/20 rounded-lg">{icon}</div>
-        <span className="text-[11px] font-black uppercase italic tracking-widest">{label}</span>
+  <div className={`flex items-center justify-between p-5 rounded-[24px] border transition-all ${active ? `bg-gradient-to-r ${color} border-white/20 text-white shadow-xl` : 'bg-white/5 border-white/5 text-gray-600 grayscale'}`}>
+     <div className="flex items-center gap-4">
+        <div className="p-3 bg-white/20 rounded-xl shadow-inner">{icon}</div>
+        <span className="text-[12px] font-black uppercase italic tracking-widest">{label}</span>
      </div>
-     {active && <Award size={14} className="opacity-50" />}
+     {active && <Award size={18} className="opacity-50" />}
   </div>
 );
 
@@ -307,18 +319,14 @@ const SpecialBadgeItem: React.FC<{ label: SpecialBadge }> = ({ label }) => {
   };
 
   return (
-    <div className={`p-4 rounded-2xl bg-gradient-to-br ${getColors()} text-white border border-white/20 shadow-xl animate-badge`}>
-       <div className="flex items-center gap-2 mb-1">
-          <Star size={10} fill="currentColor" />
-          <span className="text-[9px] font-black uppercase italic tracking-tighter">Elite Achievement</span>
+    <div className={`p-5 rounded-3xl bg-gradient-to-br ${getColors()} text-white border border-white/20 shadow-2xl animate-badge`}>
+       <div className="flex items-center gap-2 mb-2">
+          <Star size={12} fill="currentColor" />
+          <span className="text-[9px] font-black uppercase italic tracking-widest opacity-80">Elite Tier</span>
        </div>
-       <p className="text-sm font-black italic uppercase tracking-tighter leading-none">{label}</p>
+       <p className="text-lg font-black italic uppercase tracking-tighter leading-none">{label}</p>
     </div>
   );
 };
-
-const XCircle = ({ size, className }: any) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-);
 
 export default Profile;
