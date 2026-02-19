@@ -23,13 +23,28 @@ export interface Room {
   time: string;
   totalSlots: number;
   remainingSlots: number;
-  secretCode: string;
   thumbnail: string;
   roomId?: string;
   password?: string;
-  teams: string[];
+  teams: string[]; // This will store names of confirmed teams
   results?: MatchResult[];
   matchCount: number;
+  entryFee: number;
+  prizePool: number;
+}
+
+export interface Order {
+  id: string;
+  roomId: string;
+  roomTitle: string;
+  teamName: string;
+  captainUid: string;
+  captainName: string;
+  method: 'bkash' | 'nagad' | 'rocket';
+  senderNumber: string;
+  transactionId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  timestamp: string;
 }
 
 export interface Team {
@@ -38,9 +53,9 @@ export interface Team {
   teamLogo?: string;
   teamEmail: string;
   captainFullName: string;
-  captainName: string; // This is In-Game Name
+  captainName: string; 
   captainUid: string;
-  captainAccountName?: string; // Display name of the captain's account
+  captainAccountName?: string; 
   player2Name?: string;
   player2Uid?: string;
   player2AccountName?: string;
@@ -57,7 +72,7 @@ export interface Team {
   registrationDate: string;
   isApproved: boolean; 
   userUid?: string; 
-  likes?: string[]; // Array of UIDs who liked the team
+  likes?: string[];
 }
 
 export interface AppData {

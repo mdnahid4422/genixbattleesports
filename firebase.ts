@@ -1,8 +1,7 @@
-
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-// Added arrayUnion and arrayRemove to the firestore imports to fix the missing export errors
-import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+// Fix: Added 'addDoc' and 'deleteDoc' to the firestore imports to resolve missing export errors
+import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, addDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
 
 /**
  * নির্দেশ: Firebase Console (console.firebase.google.com) থেকে আপনার প্রজেক্টের 
@@ -37,5 +36,7 @@ export {
   query,
   where,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  addDoc,
+  deleteDoc
 };

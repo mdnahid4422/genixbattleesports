@@ -38,12 +38,14 @@ export const INITIAL_DATA: AppData = {
       time: '2024-12-20T20:00',
       totalSlots: 20,
       remainingSlots: 4,
-      secretCode: 'ALPHA2024',
+      // Fix: Removed 'secretCode' and added 'entryFee' & 'prizePool' to match 'Room' interface
       thumbnail: 'https://picsum.photos/400/300?random=10',
       roomId: '987212',
       password: 'genix_password',
       teams: ['Team Liquid', 'Natus Vincere', 'G2 Esports'],
-      matchCount: 1
+      matchCount: 1,
+      entryFee: 50,
+      prizePool: 500
     },
     {
       id: 'r2',
@@ -52,13 +54,15 @@ export const INITIAL_DATA: AppData = {
       time: '2024-12-18T18:00',
       totalSlots: 16,
       remainingSlots: 0,
-      secretCode: 'PRO_INV',
+      // Fix: Removed 'secretCode' and added 'entryFee' & 'prizePool' to match 'Room' interface
       thumbnail: 'https://picsum.photos/400/300?random=11',
       roomId: '112233',
       password: 'done',
       teams: ['T1', 'Fnatic', 'Cloud9'],
       matchCount: 3,
-      results: []
+      results: [],
+      entryFee: 100,
+      prizePool: 1000
     }
   ],
   teams: [

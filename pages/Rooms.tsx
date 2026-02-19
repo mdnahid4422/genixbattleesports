@@ -1,94 +1,122 @@
 
-import React, { useState, useMemo } from 'react';
-import { AppData, RoomStatus, Room, MatchResult, TeamMatchStats } from '../types';
-// Added missing 'X' icon import
-import { Calendar, Clock, Users, Lock, Unlock, Eye, EyeOff, AlertCircle, Trophy, Medal, Target, Shield, Info, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { AppData, RoomStatus, Room, MatchResult, Order } from '../types';
+import { Calendar, Clock, Users, Lock, Unlock, Eye, EyeOff, AlertCircle, Trophy, Medal, Target, Shield, Info, X, CreditCard, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { db, collection, addDoc, onSnapshot, query, where, doc, getDoc, auth } from '../firebase';
 
 interface RoomsProps {
   db: AppData;
 }
 
-const Rooms: React.FC<RoomsProps> = ({ db }) => {
+const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
   const [filter, setFilter] = useState<'All' | RoomStatus>('All');
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
-  const [secretInput, setSecretInput] = useState('');
-  const [error, setError] = useState('');
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [showPass, setShowPass] = useState(false);
+  const [paymentModal, setPaymentModal] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState<'bkash' | 'nagad' | 'rocket' | null>(null);
+  const [senderNumber, setSenderNumber] = useState('');
+  const [txnId, setTxnId] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [myOrders, setMyOrders] = useState<Order[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [myTeam, setMyTeam] = useState<any>(null);
 
-  const filteredRooms = filter === 'All' ? db.rooms : db.rooms.filter(r => r.status === filter);
-
-  const handleOpenModal = (room: Room) => {
-    setSelectedRoom(room);
-    setSecretInput('');
-    setError('');
-    setIsUnlocked(room.status === RoomStatus.COMPLETE);
-    setShowPass(false);
-  };
-
-  const verifyCode = () => {
-    if (selectedRoom && secretInput === selectedRoom.secretCode) {
-      setIsUnlocked(true);
-      setError('');
-    } else {
-      setError('Invalid Secret Code! Access Denied.');
-    }
-  };
-
-  const getStatusColor = (status: RoomStatus) => {
-    switch (status) {
-      case RoomStatus.UPCOMING: return 'bg-green-500/20 text-green-400 border-green-500/50';
-      case RoomStatus.CANCELLED: return 'bg-red-500/20 text-red-400 border-red-500/50';
-      case RoomStatus.COMPLETE: return 'bg-purple-500/20 text-purple-400 border-purple-500/50';
-    }
-  };
-
-  const getPositionPoints = (pos: number) => {
-    const pointsMap: Record<number, number> = {
-      1: 12, 2: 9, 3: 8, 4: 7, 5: 6, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1
-    };
-    return pointsMap[pos] || 0;
-  };
-
-  const calculateTotalPoints = (res: MatchResult) => {
-    let totalPosPoints = 0;
-    let totalKills = 0;
-    let booyahs = 0;
-
-    res.matchStats.forEach(stat => {
-      totalPosPoints += getPositionPoints(stat.position);
-      totalKills += stat.kills;
-      if (stat.position === 1) booyahs++;
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged(async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        // Get user's orders
+        const q = query(collection(db, 'orders'), where('captainUid', '==', user.uid));
+        onSnapshot(q, (snap) => {
+          setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
+        });
+        // Get user's team
+        const teamDoc = await getDoc(doc(db, 'registrations', user.uid));
+        if (teamDoc.exists()) setMyTeam(teamDoc.data());
+      }
     });
+    return () => unsub();
+  }, []);
 
-    return { 
-      totalPosPoints, 
-      totalKills, 
-      booyahs, 
-      grandTotal: totalPosPoints + totalKills 
-    };
+  const filteredRooms = filter === 'All' ? appDb.rooms : appDb.rooms.filter(r => r.status === filter);
+
+  const getOrderStatus = (roomId: string) => {
+    return myOrders.find(o => o.roomId === roomId)?.status || 'none';
   };
 
-  const rankedResults = useMemo(() => {
-    if (!selectedRoom?.results) return [];
-    return [...selectedRoom.results]
-      .map(r => ({ ...r, calculated: calculateTotalPoints(r) }))
-      .sort((a, b) => b.calculated.grandTotal - a.calculated.grandTotal || b.calculated.booyahs - a.calculated.booyahs);
-  }, [selectedRoom]);
+  const handleAction = (room: Room) => {
+    const status = getOrderStatus(room.id);
+    if (status === 'approved' || room.status === RoomStatus.COMPLETE) {
+      setSelectedRoom(room);
+    } else if (status === 'pending') {
+      alert("Your payment is pending approval. Please wait for the admin to verify.");
+    } else {
+      if (!currentUser) {
+        alert("Please login first!");
+        return;
+      }
+      if (!myTeam) {
+        alert("You need a registered team to buy a slot!");
+        return;
+      }
+      setSelectedRoom(room);
+      setPaymentModal(true);
+    }
+  };
+
+  const submitPayment = async () => {
+    if (!senderNumber || !txnId || !selectedMethod || !selectedRoom || !myTeam) {
+      alert("Please fill all fields correctly.");
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const orderData = {
+        roomId: selectedRoom.id,
+        roomTitle: selectedRoom.title,
+        teamName: myTeam.teamName,
+        captainUid: currentUser.uid,
+        captainName: currentUser.displayName || 'Player',
+        method: selectedMethod,
+        senderNumber,
+        transactionId: txnId,
+        status: 'pending',
+        timestamp: new Date().toISOString()
+      };
+      await addDoc(collection(db, 'orders'), orderData);
+      alert("Request sent! Admin will verify your transaction shortly.");
+      setPaymentModal(false);
+      setSenderNumber('');
+      setTxnId('');
+      setSelectedMethod(null);
+    } catch (e) {
+      alert("Failed to submit. Try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const getMethodDetails = (method: string) => {
+    const details = {
+      bkash: { label: 'bKash Personal', num: '01305098283', color: 'bg-[#d12053]' },
+      nagad: { label: 'Nagad Personal', num: '01305098283', color: 'bg-[#f7941d]' },
+      rocket: { label: 'Rocket Personal', num: '01305098283', color: 'bg-[#8c348d]' }
+    };
+    return details[method as keyof typeof details];
+  };
 
   return (
     <div className="py-12 px-4 md:px-8 max-w-7xl mx-auto min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
         <div>
-          <h2 className="font-orbitron text-3xl font-black italic mb-2">Tournament Rooms</h2>
-          <p className="text-gray-400">Join a battle, find your match details here.</p>
+          <h2 className="font-orbitron text-3xl font-black italic mb-2">Tournament Arenas</h2>
+          <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Select a battle to dominate</p>
         </div>
         <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 overflow-x-auto max-w-full">
           {['All', RoomStatus.UPCOMING, RoomStatus.CANCELLED, RoomStatus.COMPLETE].map((cat) => (
             <button
               key={cat}
               onClick={() => setFilter(cat as any)}
-              className={`px-6 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${filter === cat ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+              className={`px-6 py-2 rounded-lg text-xs font-black uppercase transition-all whitespace-nowrap ${filter === cat ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
               {cat}
             </button>
@@ -96,214 +124,127 @@ const Rooms: React.FC<RoomsProps> = ({ db }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredRooms.map((room) => (
-          <div 
-            key={room.id}
-            onClick={() => handleOpenModal(room)}
-            className="glass-card rounded-2xl overflow-hidden border-white/5 hover:border-purple-500/50 transition-all cursor-pointer group flex flex-col"
-          >
-            <div className="relative h-48 overflow-hidden">
-              <img src={room.thumbnail} alt={room.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-              <div className="absolute top-4 left-4">
-                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase border tracking-widest ${getStatusColor(room.status)}`}>
-                  {room.status}
-                </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {filteredRooms.map((room) => {
+          const orderStatus = getOrderStatus(room.id);
+          return (
+            <div key={room.id} onClick={() => handleAction(room)} className="glass-card rounded-[32px] overflow-hidden border-white/5 hover:border-purple-500/50 transition-all cursor-pointer group flex flex-col relative">
+              <div className="relative h-52 overflow-hidden">
+                <img src={room.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                <div className="absolute top-4 left-4 flex gap-2">
+                   <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-black/60 border-purple-500/50 text-purple-400 backdrop-blur-md">Entry: ৳{room.entryFee}</span>
+                   <span className="px-3 py-1 rounded-full text-[8px] font-black uppercase border bg-black/60 border-yellow-500/50 text-yellow-400 backdrop-blur-md">Prize: ৳{room.prizePool}</span>
+                </div>
+                <div className="absolute bottom-0 inset-x-0 h-20 bg-gradient-to-t from-[#060608] to-transparent"></div>
+              </div>
+              <div className="p-6 flex-grow flex flex-col -mt-4 relative z-10">
+                <h3 className="text-xl font-black text-white italic uppercase tracking-tighter mb-4 line-clamp-1">{room.title}</h3>
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  <InfoIcon icon={<Calendar size={12}/>} text={new Date(room.time).toLocaleDateString()} />
+                  <InfoIcon icon={<Clock size={12}/>} text={`${room.matchCount} Matches`} />
+                  <InfoIcon icon={<Users size={12}/>} text={`${room.totalSlots} Slots`} />
+                  <InfoIcon icon={<Target size={12}/>} text={`${room.remainingSlots} Left`} color="text-green-400" />
+                </div>
+                <button className={`w-full py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] transition-all flex items-center justify-center space-x-2 ${
+                  room.status === RoomStatus.COMPLETE ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' :
+                  orderStatus === 'approved' ? 'bg-green-600 text-white shadow-lg shadow-green-600/20' :
+                  orderStatus === 'pending' ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-500/30 cursor-wait' :
+                  'bg-white/5 border border-white/10 group-hover:bg-purple-600 group-hover:text-white'
+                }`}>
+                  {room.status === RoomStatus.COMPLETE ? <Trophy size={14} /> : orderStatus === 'approved' ? <Unlock size={14}/> : <Lock size={14}/>}
+                  <span>{room.status === RoomStatus.COMPLETE ? 'View Results' : orderStatus === 'approved' ? 'View Match' : orderStatus === 'pending' ? 'Pending Approval' : 'Buy Slot'}</span>
+                </button>
               </div>
             </div>
-            <div className="p-6 flex-grow flex flex-col">
-              <h3 className="text-xl font-bold mb-4 line-clamp-1">{room.title}</h3>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="flex items-center text-sm text-gray-400 space-x-2">
-                  <Calendar size={16} className="text-purple-400" />
-                  <span>{new Date(room.time).toLocaleDateString()}</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-400 space-x-2">
-                  <Clock size={16} className="text-purple-400" />
-                  <span>{room.matchCount} Matches</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-400 space-x-2">
-                  <Users size={16} className="text-purple-400" />
-                  <span>{room.totalSlots} Slots</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-400 space-x-2">
-                  <Users size={16} className="text-green-400" />
-                  <span>{room.remainingSlots} Left</span>
-                </div>
-              </div>
-              <button className={`w-full py-3 transition-all rounded-xl font-bold flex items-center justify-center space-x-2 ${room.status === RoomStatus.COMPLETE ? 'bg-purple-600 text-white' : 'bg-white/5 group-hover:bg-purple-600'}`}>
-                {room.status === RoomStatus.COMPLETE ? <Trophy size={18} /> : <Lock size={18} />}
-                <span>{room.status === RoomStatus.COMPLETE ? 'View Match Results' : 'Access Match Details'}</span>
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Result Modal */}
-      {selectedRoom && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedRoom(null)}></div>
-          <div className="relative w-full max-w-5xl glass-card border-white/20 rounded-3xl shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
-            <div className="p-6 md:p-10 border-b border-white/10 flex justify-between items-start shrink-0">
-                <div>
-                  <h3 className="font-orbitron text-2xl md:text-3xl font-black mb-1 text-white uppercase tracking-tight italic">{selectedRoom.title}</h3>
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2 text-xs text-purple-400 font-bold uppercase tracking-widest">
-                      <Calendar size={12} />
-                      <span>{new Date(selectedRoom.time).toLocaleDateString()}</span>
-                    </div>
-                    <div className="flex items-center space-x-2 text-xs text-blue-400 font-bold uppercase tracking-widest">
-                      <Target size={12} />
-                      <span>Total Matches: {selectedRoom.matchCount}</span>
-                    </div>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedRoom(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-400 hover:text-white">
-                  <X size={24} />
-                </button>
+      {/* Payment Modal */}
+      {paymentModal && selectedRoom && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setPaymentModal(false)}></div>
+          <div className="relative w-full max-w-md glass-card rounded-[40px] border-white/20 p-8 animate-in zoom-in duration-300">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="font-orbitron text-xl font-black text-white uppercase italic">Secure Checkout</h3>
+              <button onClick={() => setPaymentModal(false)} className="p-2 text-gray-500 hover:text-white"><X size={20}/></button>
             </div>
 
-            <div className="flex-grow overflow-auto p-6 md:p-10">
-              {!isUnlocked ? (
-                <div className="max-w-md mx-auto space-y-6 text-center py-10">
-                  <div className="w-20 h-20 bg-purple-600/20 rounded-full flex items-center justify-center mx-auto mb-4 text-purple-400">
-                    <Lock size={40} />
-                  </div>
-                  <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-2xl text-purple-300 text-sm">
-                    <p>Enter the secret code to unlock match details.</p>
-                  </div>
-                  <input 
-                    type="text" 
-                    value={secretInput}
-                    onChange={(e) => setSecretInput(e.target.value)}
-                    placeholder="SECRET CODE" 
-                    className="w-full bg-black/50 border border-white/10 rounded-xl py-4 px-6 text-center text-2xl font-black tracking-[0.5em] text-white focus:outline-none focus:border-purple-500 uppercase"
-                  />
-                  {error && <p className="text-red-400 text-sm font-bold">{error}</p>}
-                  <button 
-                    onClick={verifyCode}
-                    className="w-full py-4 bg-purple-600 hover:bg-purple-700 rounded-xl font-black uppercase text-lg shadow-xl shadow-purple-600/20"
-                  >
-                    Unlock
+            {!selectedMethod ? (
+              <div className="space-y-4">
+                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest text-center mb-6">Select Payment Provider</p>
+                <MethodBtn id="bkash" name="bKash" color="bg-[#d12053]" onClick={() => setSelectedMethod('bkash')} />
+                <MethodBtn id="nagad" name="Nagad" color="bg-[#f7941d]" onClick={() => setSelectedMethod('nagad')} />
+                <MethodBtn id="rocket" name="Rocket" color="bg-[#8c348d]" onClick={() => setSelectedMethod('rocket')} />
+              </div>
+            ) : (
+              <div className="space-y-6 animate-in slide-in-from-right">
+                <div className={`p-6 rounded-3xl ${getMethodDetails(selectedMethod).color} text-white shadow-xl`}>
+                   <p className="text-[10px] font-black uppercase opacity-60 mb-1">Send Money to ({getMethodDetails(selectedMethod).label})</p>
+                   <p className="text-3xl font-black tracking-widest">{getMethodDetails(selectedMethod).num}</p>
+                </div>
+                <div className="space-y-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> Open your {selectedMethod} App</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> Send exactly ৳{selectedRoom.entryFee} to the number above</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> Copy Transaction ID and provide sender info below</p>
+                </div>
+                <div className="space-y-4">
+                  <input type="text" placeholder="SENDER NUMBER" value={senderNumber} onChange={e => setSenderNumber(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none focus:border-purple-500" />
+                  <input type="text" placeholder="TRANSACTION ID" value={txnId} onChange={e => setTxnId(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none focus:border-purple-500" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setSelectedMethod(null)} className="flex-grow py-4 bg-white/5 text-gray-400 rounded-2xl text-[10px] font-black uppercase">Back</button>
+                  <button onClick={submitPayment} disabled={isSubmitting} className="flex-[2] py-4 bg-purple-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-purple-600/20">
+                    {isSubmitting ? <Loader2 size={16} className="animate-spin mx-auto"/> : 'Submit Payment'}
                   </button>
                 </div>
-              ) : selectedRoom.status === RoomStatus.COMPLETE ? (
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                    <div className="flex items-center space-x-2 text-purple-400">
-                      <Trophy size={20} className="neon-text-purple" />
-                      <h4 className="font-orbitron font-bold uppercase text-xl">Match Point Table</h4>
-                    </div>
-                    <div className="flex items-center space-x-3 text-[10px] font-bold uppercase tracking-widest text-gray-500">
-                       <span className="flex items-center space-x-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div><span>Position Pts</span></span>
-                       <span className="flex items-center space-x-1"><div className="w-2 h-2 rounded-full bg-red-500"></div><span>Kill Pts</span></span>
-                    </div>
-                  </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-                  <div className="overflow-x-auto rounded-2xl border border-white/10 glass-card">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
-                      <thead>
-                        <tr className="bg-white/5 text-[10px] uppercase font-orbitron tracking-widest text-gray-400">
-                          <th rowSpan={2} className="px-4 py-4 border-r border-white/10 text-center">Rank</th>
-                          <th rowSpan={2} className="px-6 py-4 border-r border-white/10">Team</th>
-                          <th rowSpan={2} className="px-4 py-4 border-r border-white/10 text-center text-yellow-500">Booyah</th>
-                          
-                          {/* Grouped Match Columns */}
-                          {Array.from({ length: selectedRoom.matchCount }).map((_, i) => (
-                            <th key={i} colSpan={2} className="px-4 py-3 border-r border-white/10 text-center bg-white/2">
-                              Match {i + 1}
-                            </th>
-                          ))}
-                          
-                          <th rowSpan={2} className="px-4 py-4 text-center bg-purple-600/20 text-white font-black text-xs">Total Pts</th>
-                        </tr>
-                        <tr className="bg-white/5 text-[8px] uppercase font-bold tracking-widest text-gray-500 border-t border-white/10">
-                          {Array.from({ length: selectedRoom.matchCount }).map((_, i) => (
-                            <React.Fragment key={i}>
-                              <th className="px-2 py-2 text-center border-r border-white/5 text-blue-400">Pos</th>
-                              <th className="px-2 py-2 text-center border-r border-white/10 text-red-400">Kill</th>
-                            </React.Fragment>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/10">
-                        {rankedResults.map((res, idx) => (
-                          <tr key={idx} className="hover:bg-white/5 transition-colors group">
-                            <td className="px-4 py-5 text-center font-black font-orbitron text-lg italic text-gray-500 group-hover:text-purple-400 border-r border-white/10">
-                              #{idx + 1}
-                            </td>
-                            <td className="px-6 py-5 border-r border-white/10">
-                              <div className="flex items-center space-x-3">
-                                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
-                                  {res.teamLogo ? <img src={res.teamLogo} className="w-full h-full object-cover" /> : <Shield size={18} className="text-gray-600" />}
-                                </div>
-                                <span className="font-bold text-white uppercase tracking-tight text-sm truncate max-w-[140px]">{res.teamName}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-5 text-center font-black text-xl text-yellow-500 border-r border-white/10 bg-yellow-500/5">
-                              {res.calculated.booyahs || '-'}
-                            </td>
+      {/* Match Details Modal (Visible after approval) */}
+      {selectedRoom && !paymentModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedRoom(null)}></div>
+          <div className="relative w-full max-w-4xl glass-card border-white/20 rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-8 border-b border-white/10 flex justify-between items-center shrink-0">
+               <div>
+                 <h3 className="font-orbitron text-2xl font-black text-white italic uppercase tracking-tighter">{selectedRoom.title}</h3>
+                 <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mt-1">Operational Data Center</p>
+               </div>
+               <button onClick={() => setSelectedRoom(null)} className="p-3 bg-white/5 rounded-full text-gray-500 hover:text-white"><X size={20}/></button>
+            </div>
 
-                            {/* Match Stats Rendering */}
-                            {Array.from({ length: selectedRoom.matchCount }).map((_, mIdx) => {
-                              const stat = res.matchStats[mIdx] || { position: 0, kills: 0 };
-                              return (
-                                <React.Fragment key={mIdx}>
-                                  <td className="px-2 py-5 text-center font-bold text-blue-400 border-r border-white/5 bg-blue-500/2">
-                                    {stat.position || '-'}
-                                  </td>
-                                  <td className="px-2 py-5 text-center font-bold text-red-400 border-r border-white/10 bg-red-500/2">
-                                    {stat.kills || '-'}
-                                  </td>
-                                </React.Fragment>
-                              );
-                            })}
-
-                            <td className="px-4 py-5 text-center font-black font-orbitron text-2xl text-white bg-purple-600/10">
-                              {res.calculated.grandTotal}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {rankedResults.length === 0 && (
-                    <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10">
-                      <Info className="mx-auto mb-4 text-gray-600" size={40} />
-                      <p className="text-gray-500 italic">Leaderboard is currently being processed by tournament admins.</p>
-                    </div>
-                  )}
-
-                  <div className="mt-8 flex justify-center">
-                    <button 
-                      onClick={() => setSelectedRoom(null)}
-                      className="px-10 py-4 glass-card hover:bg-white/10 rounded-2xl font-bold transition-all uppercase tracking-widest text-sm"
-                    >
-                      Close Standings
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <MatchDetailCard label="Room ID" value={selectedRoom.roomId} icon={<Unlock />} />
-                    <MatchDetailCard label="Password" value={selectedRoom.password} icon={<Lock />} isPassword />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-4 tracking-widest">Team Entry List</label>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {selectedRoom.teams.length > 0 ? selectedRoom.teams.map((team, idx) => (
-                        <div key={idx} className="bg-white/5 px-4 py-3 rounded-xl text-xs font-semibold border border-white/5 text-gray-400 uppercase tracking-tight">
-                          {team}
-                        </div>
-                      )) : <p className="text-gray-600 text-sm italic col-span-full">No teams listed.</p>}
-                    </div>
-                  </div>
-                  <button onClick={() => setSelectedRoom(null)} className="w-full py-4 bg-white/5 hover:bg-white/10 rounded-xl font-bold transition-all">Close</button>
-                </div>
-              )}
+            <div className="p-8 overflow-y-auto space-y-10 custom-scrollbar">
+               {selectedRoom.status === RoomStatus.COMPLETE ? (
+                 <div className="text-center py-10"><Trophy className="mx-auto text-purple-500 mb-4" size={48}/> <p className="text-gray-400 uppercase font-bold text-xs">Match results will be uploaded soon by admins.</p></div>
+               ) : (
+                 <>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <DetailBox label="ROOM ID" value={selectedRoom.roomId || "WAITING..."} sub={selectedRoom.roomId ? "Verified" : "Will be updated 15m before start"} />
+                      <DetailBox label="PASSWORD" value={selectedRoom.password || "WAITING..."} sub={selectedRoom.password ? "Verified" : "Will be updated 15m before start"} />
+                   </div>
+                   
+                   <div className="space-y-6">
+                      <div className="flex items-center justify-between border-l-4 border-green-500 pl-4">
+                         <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest italic">Infiltrated Squads</h4>
+                         <span className="text-[10px] font-black text-green-400 bg-green-500/10 px-3 py-1 rounded-full">{selectedRoom.teams?.length || 0} / {selectedRoom.totalSlots} Slots Taken</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                         {selectedRoom.teams && selectedRoom.teams.length > 0 ? selectedRoom.teams.map((team, i) => (
+                           <div key={i} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex items-center space-x-3 group hover:border-green-500/30 transition-all">
+                              <span className="text-[8px] font-black text-gray-600">{i+1}</span>
+                              <span className="text-[10px] font-black text-white uppercase italic truncate">{team}</span>
+                           </div>
+                         )) : (
+                           <div className="col-span-full py-10 text-center border border-dashed border-white/5 rounded-3xl text-gray-600 font-bold uppercase text-[10px] tracking-widest">No squads confirmed yet.</div>
+                         )}
+                      </div>
+                   </div>
+                 </>
+               )}
             </div>
           </div>
         </div>
@@ -312,24 +253,27 @@ const Rooms: React.FC<RoomsProps> = ({ db }) => {
   );
 };
 
-const MatchDetailCard = ({ label, value, icon, isPassword }: any) => {
-  const [show, setShow] = useState(!isPassword);
-  return (
-    <div className="p-6 bg-white/5 rounded-2xl border border-white/10 relative overflow-hidden">
-      <div className="absolute top-2 right-2 opacity-10 text-white">{icon}</div>
-      <label className="block text-[10px] font-black text-purple-400 uppercase mb-2 tracking-widest">{label}</label>
-      <div className="flex items-center justify-between">
-        <div className="text-2xl font-black font-orbitron text-white">
-          {!value ? <span className="text-gray-600 italic text-lg">PENDING</span> : (show ? value : '••••••••')}
-        </div>
-        {value && isPassword && (
-          <button onClick={() => setShow(!show)} className="text-gray-400 hover:text-white transition-colors">
-            {show ? <EyeOff size={20} /> : <Eye size={20} />}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
+const InfoIcon = ({ icon, text, color = "text-gray-400" }: any) => (
+  <div className={`flex items-center space-x-2 text-[10px] font-bold uppercase tracking-tight ${color}`}>
+    <div className="text-purple-500">{icon}</div>
+    <span>{text}</span>
+  </div>
+);
+
+const MethodBtn = ({ id, name, color, onClick }: any) => (
+  <button onClick={onClick} className={`w-full p-6 ${color} text-white rounded-3xl flex items-center justify-between group hover:scale-[1.02] transition-all shadow-xl`}>
+    <span className="text-xl font-black uppercase italic tracking-tighter">{name}</span>
+    <CreditCard className="opacity-40 group-hover:opacity-100 transition-opacity" />
+  </button>
+);
+
+const DetailBox = ({ label, value, sub }: any) => (
+  <div className="p-8 bg-white/5 border border-white/10 rounded-3xl relative overflow-hidden group">
+     <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/5 blur-[40px] rounded-full"></div>
+     <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-3 italic">{label}</p>
+     <p className={`text-4xl font-black font-orbitron italic mb-2 ${value === "WAITING..." ? "text-gray-700" : "text-white"}`}>{value}</p>
+     <p className="text-[8px] font-black text-gray-600 uppercase tracking-widest">{sub}</p>
+  </div>
+);
 
 export default Rooms;

@@ -16,15 +16,29 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
   const [selectedPlayer, setSelectedPlayer] = useState<{name: string, ign: string, uid: string} | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [likeAnimating, setLikeAnimating] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState(false);
 
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged(user => setCurrentUser(user));
+    
+    // Listener for approved teams with error handling for permissions
     const q = query(collection(db, 'registrations'), where('isApproved', '==', true));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const teams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Team));
-      setApprovedTeams(teams);
-      setLoading(false);
-    });
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        const teams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Team));
+        setApprovedTeams(teams);
+        setLoading(false);
+        setPermissionError(false);
+      },
+      (error) => {
+        console.error("Firestore Permission Error:", error);
+        setLoading(false);
+        if (error.code === 'permission-denied') {
+          setPermissionError(true);
+        }
+      }
+    );
+
     return () => { unsubscribe(); unsubAuth(); };
   }, []);
 
@@ -38,7 +52,6 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
     const isLiked = currentLikes.includes(currentUser.uid);
     const teamRef = doc(db, 'registrations', teamId);
     
-    // Trigger small animation
     setLikeAnimating(teamId);
     setTimeout(() => setLikeAnimating(null), 500);
 
@@ -46,8 +59,13 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
       await updateDoc(teamRef, {
         likes: isLiked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid)
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error liking team:", err);
+      if (err.code === 'permission-denied') {
+        alert("Permission denied! Please ask the admin to update Firestore Security Rules.");
+      } else {
+        alert("Failed to update like. Please try again.");
+      }
     }
   };
 
@@ -59,6 +77,23 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
   const getTeamStats = (teamName: string): PointEntry | undefined => {
     return appDb.points.find(p => p.teamName.toLowerCase() === teamName.toLowerCase());
   };
+
+  if (permissionError) {
+    return (
+      <div className="py-24 px-4 text-center">
+        <div className="max-w-md mx-auto glass-card p-10 rounded-[40px] border-red-500/20">
+          <Shield size={60} className="mx-auto mb-6 text-red-500 opacity-50" />
+          <h2 className="text-2xl font-black font-orbitron text-white uppercase italic mb-4">Access Denied</h2>
+          <p className="text-gray-500 mb-8 text-sm uppercase font-bold tracking-widest italic leading-relaxed">
+            Firestore permissions are missing. <br/> Please check the <span className="text-purple-400 font-black">FIREBASE_RULES.txt</span> guide to fix this.
+          </p>
+          <button onClick={() => window.location.reload()} className="px-8 py-4 bg-white/5 border border-white/10 rounded-2xl text-white font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all">
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="py-12 px-4 md:px-8 max-w-7xl mx-auto min-h-screen">
@@ -99,7 +134,6 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
                 onClick={() => setSelectedTeam(team)}
                 className="glass-card rounded-[40px] overflow-hidden border-white/5 hover:border-purple-500/50 transition-all group flex flex-col cursor-pointer relative"
               >
-                {/* Visual Glow on Hover */}
                 <div className="absolute inset-0 bg-gradient-to-br from-purple-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 
                 <div className="p-8 flex items-center space-x-5 border-b border-white/5 relative z-10">
@@ -157,7 +191,6 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
         </div>
       )}
 
-      {/* Team Profile Dashboard Modal */}
       {selectedTeam && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTeam(null)}></div>
@@ -231,7 +264,6 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
         </div>
       )}
 
-      {/* Player Profile ID Modal */}
       {selectedPlayer && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedPlayer(null)}></div>

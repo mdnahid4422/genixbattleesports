@@ -1,0 +1,43 @@
+
+============================================================
+           GENIX BATTLE - FIRESTORE SECURITY RULES
+============================================================
+
+নিচের কোডটি কপি করে আপনার Firebase Console -> Firestore -> Rules ট্যাবে পেস্ট করুন।
+এটি না করলে 'Permission Denied' এরর আসবে এবং ডাটা লোড হবে না।
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ১. গ্লোবাল অ্যাপ ডাটা (রুম এবং পয়েন্ট টেবিল) - যে কেউ দেখতে পারবে
+    match /app/global_data {
+      allow read: if true;
+      // আপাতত সেটআপের সুবিধার জন্য যে কেউ লিখতে পারবে, পরে চাইলে অ্যাডমিন চেক বসানো যাবে
+      allow write: if request.auth != null;
+    }
+
+    // ২. রেজিস্ট্রেশন এবং টিম ডাটা
+    match /registrations/{teamId} {
+      allow read: if true;
+      allow create, update: if request.auth != null;
+      allow delete: if request.auth != null;
+
+      match /requests/{requestId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // ৩. ইউজার মেম্বারশিপ স্ট্যাটাস
+    match /users_membership/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ৪. ইউজার প্রোফাইল এবং রোল
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
