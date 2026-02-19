@@ -26,7 +26,8 @@ export interface Room {
   thumbnail: string;
   roomId?: string;
   password?: string;
-  teams: string[]; // This will store names of confirmed teams
+  waitingMessage?: string; // New: Custom message when ID/Pass is empty
+  teams: string[]; 
   results?: MatchResult[];
   matchCount: number;
   entryFee: number;

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-// HashRouter ব্যবহার করা হয়েছে যেন সাব-পাউথগুলো সব হোস্টিংয়ে কাজ করে
 import { HashRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { LogIn, Shield, LayoutGrid, List, Users, Trophy, UserCircle, Menu, X, Loader2, AlertCircle, RefreshCw, MessageSquare } from 'lucide-react';
+import { LogIn, Shield, LayoutGrid, List, Users, Trophy, Menu, X, MessageSquare } from 'lucide-react';
 import { AppData } from './types';
 import { INITIAL_DATA } from './data';
 import { auth, db, onAuthStateChanged, doc, getDoc, onSnapshot } from './firebase';
@@ -15,8 +14,9 @@ import Points from './pages/Points';
 import Rules from './pages/Rules';
 import Contact from './pages/Contact';
 import Admin from './pages/Admin';
+import Login from './pages/Login';
 
-const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; hasPermissionError: boolean }> = ({ appDb, setAppDb, currentUser, hasPermissionError }) => {
+const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any }> = ({ appDb, setAppDb, currentUser }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasTeam, setHasTeam] = useState(false);
   const navigate = useNavigate();
@@ -38,11 +38,10 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; ha
             } else {
               setHasTeam(false);
             }
-          }, (err) => console.log("Membership listener rule block"));
+          });
           return () => unsubMem();
         }
-      },
-      (err) => console.log("Registration listener rule block")
+      }
     );
     return () => unsubReg();
   }, [currentUser]);
@@ -60,7 +59,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; ha
         onClick={() => handleNav(to)}
         className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all w-full lg:w-auto ${
           isActive 
-            ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30 shadow-[0_0_15px_rgba(147,51,234,0.1)]' 
+            ? 'bg-purple-600/20 text-purple-400 border border-purple-500/30' 
             : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
         }`}
       >
@@ -72,23 +71,12 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; ha
 
   return (
     <div className="min-h-screen flex flex-col bg-[#060608]">
-      {/* Permission Warning for Admins */}
-      {hasPermissionError && currentUser?.isAdmin && (
-        <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between text-xs font-black uppercase tracking-widest z-[200]">
-          <div className="flex items-center space-x-2">
-            <AlertCircle size={14} />
-            <span>Database Permission Denied! Update your Firestore Rules immediately.</span>
-          </div>
-          <button onClick={() => window.location.reload()} className="bg-white/20 px-3 py-1 rounded hover:bg-white/30 transition-all">Retry</button>
-        </div>
-      )}
-
       <header className="sticky top-0 z-[100] glass-card border-b border-white/10 px-4 md:px-8 py-4 flex items-center justify-between">
         <div onClick={() => handleNav('/')} className="flex items-center space-x-3 cursor-pointer group">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-purple-500/20 shrink-0 group-hover:scale-110 transition-transform">
-            <Shield className="text-white" size={24} />
+          <div className="w-10 h-10 shrink-0 group-hover:rotate-12 transition-transform drop-shadow-[0_0_8px_rgba(139,92,246,0.5)]">
+            <img src="/image/logo.png" alt="GENIX Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="font-orbitron text-lg md:text-2xl font-black tracking-tighter italic text-white neon-text-purple whitespace-nowrap">
+          <h1 className="font-orbitron text-lg md:text-2xl font-black tracking-tighter italic text-white neon-text-purple whitespace-nowrap uppercase">
             𝑮𝑬𝑵𝑰𝑿 Battle
           </h1>
         </div>
@@ -104,7 +92,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; ha
         </nav>
 
         <div className="flex items-center space-x-4">
-          <button onClick={() => handleNav('/login')} className="transition-all hover:scale-105 active:scale-95">
+          <button onClick={() => handleNav(currentUser?.isAdmin ? '/admin' : '/login')} className="transition-all hover:scale-105 active:scale-95">
             {currentUser ? (
               <div className="flex items-center space-x-3 group bg-white/5 border border-white/10 p-1 pr-4 rounded-full hover:border-purple-500/50 transition-all">
                 <img src={currentUser.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.uid}`} className="w-8 h-8 rounded-full border border-white/10" alt="User" />
@@ -114,7 +102,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; ha
                 </div>
               </div>
             ) : (
-              <div className="flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black uppercase bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-lg shadow-purple-600/20">
+              <div className="flex items-center space-x-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase bg-purple-600 text-white hover:bg-purple-700 transition-all shadow-lg shadow-purple-600/20">
                 <LogIn size={14} />
                 <span>Login</span>
               </div>
@@ -142,14 +130,6 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; ha
       )}
 
       <main className="flex-grow">
-        {hasPermissionError && !currentUser?.isAdmin && (
-          <div className="bg-purple-600/10 border-b border-purple-500/20 p-2 text-center">
-            <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest italic flex items-center justify-center space-x-2">
-              <RefreshCw size={10} className="animate-spin" />
-              <span>Offline Mode: Using cached tournament data. Live updates disabled.</span>
-            </p>
-          </div>
-        )}
         <Routes>
           <Route path="/" element={<Home db={appDb} />} />
           <Route path="/rooms" element={<Rooms db={appDb} />} />
@@ -158,7 +138,8 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: any; ha
           <Route path="/points" element={<Points db={appDb} />} />
           <Route path="/rules" element={<Rules db={appDb} />} />
           <Route path="/contact" element={<Contact />} />
-          <Route path="/login" element={<Admin db={appDb} setDb={setAppDb} currentUser={currentUser} />} />
+          <Route path="/login" element={<Login currentUser={currentUser} />} />
+          <Route path="/admin" element={<Admin db={appDb} setDb={setAppDb} currentUser={currentUser} />} />
         </Routes>
       </main>
 
@@ -173,7 +154,6 @@ const App: React.FC = () => {
   const [appDb, setAppDb] = useState<AppData>(INITIAL_DATA);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [hasPermissionError, setHasPermissionError] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -200,13 +180,6 @@ const App: React.FC = () => {
       (docSnap) => {
         if (docSnap.exists()) {
           setAppDb(docSnap.data() as AppData);
-          setHasPermissionError(false);
-        }
-      },
-      (error) => {
-        console.error("Global Data Permission Error:", error);
-        if (error.code === 'permission-denied') {
-          setHasPermissionError(true);
         }
       }
     );
@@ -216,14 +189,16 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#060608] flex flex-col items-center justify-center">
-        <Loader2 className="animate-spin text-purple-500 mb-4" size={48} />
+        <div className="w-20 h-20 bg-purple-600 rounded-3xl animate-bounce flex items-center justify-center shadow-2xl shadow-purple-600/50">
+           <img src="/image/logo.png" className="w-12 h-12 object-contain" alt="Loading" />
+        </div>
       </div>
     );
   }
 
   return (
     <Router>
-      <AppContent appDb={appDb} setAppDb={setAppDb} currentUser={currentUser} hasPermissionError={hasPermissionError} />
+      <AppContent appDb={appDb} setAppDb={setAppDb} currentUser={currentUser} />
     </Router>
   );
 };

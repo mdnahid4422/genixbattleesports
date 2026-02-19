@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { AppData, RoomStatus, Room, MatchResult, Order } from '../types';
-import { Calendar, Clock, Users, Lock, Unlock, Eye, EyeOff, AlertCircle, Trophy, Medal, Target, Shield, Info, X, CreditCard, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { Calendar, Clock, Users, Lock, Unlock, Eye, EyeOff, AlertCircle, Trophy, Medal, Target, Shield, Info, X, CreditCard, ChevronRight, CheckCircle2, Loader2, MessageCircle } from 'lucide-react';
 import { db, collection, addDoc, onSnapshot, query, where, doc, getDoc, auth } from '../firebase';
 
 interface RoomsProps {
@@ -24,12 +24,10 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
     const unsub = auth.onAuthStateChanged(async (user) => {
       setCurrentUser(user);
       if (user) {
-        // Get user's orders
         const q = query(collection(db, 'orders'), where('captainUid', '==', user.uid));
         onSnapshot(q, (snap) => {
           setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
         });
-        // Get user's team
         const teamDoc = await getDoc(doc(db, 'registrations', user.uid));
         if (teamDoc.exists()) setMyTeam(teamDoc.data());
       }
@@ -48,14 +46,14 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
     if (status === 'approved' || room.status === RoomStatus.COMPLETE) {
       setSelectedRoom(room);
     } else if (status === 'pending') {
-      alert("Your payment is pending approval. Please wait for the admin to verify.");
+      alert("আপনার পেমেন্ট বর্তমানে যাচাই করা হচ্ছে। অনুগ্রহ করে অ্যাডমিন এপ্রুভ করা পর্যন্ত অপেক্ষা করুন।");
     } else {
       if (!currentUser) {
-        alert("Please login first!");
+        alert("অনুগ্রহ করে প্রথমে লগইন করুন!");
         return;
       }
       if (!myTeam) {
-        alert("You need a registered team to buy a slot!");
+        alert("স্লট বুক করতে হলে আপনার একটি রেজিস্টার্ড টিম থাকতে হবে!");
         return;
       }
       setSelectedRoom(room);
@@ -65,7 +63,7 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
 
   const submitPayment = async () => {
     if (!senderNumber || !txnId || !selectedMethod || !selectedRoom || !myTeam) {
-      alert("Please fill all fields correctly.");
+      alert("সবগুলো তথ্য সঠিক উপায়ে প্রদান করুন।");
       return;
     }
     setIsSubmitting(true);
@@ -83,13 +81,13 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
         timestamp: new Date().toISOString()
       };
       await addDoc(collection(db, 'orders'), orderData);
-      alert("Request sent! Admin will verify your transaction shortly.");
+      alert("অনুরোধ পাঠানো হয়েছে! অ্যাডমিন দ্রুত আপনার ট্রানজিশন যাচাই করবেন।");
       setPaymentModal(false);
       setSenderNumber('');
       setTxnId('');
       setSelectedMethod(null);
     } catch (e) {
-      alert("Failed to submit. Try again.");
+      alert("সাবমিট করতে সমস্যা হয়েছে। পুনরায় চেষ্টা করুন।");
     } finally {
       setIsSubmitting(false);
     }
@@ -109,7 +107,7 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
       <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
         <div>
           <h2 className="font-orbitron text-3xl font-black italic mb-2">Tournament Arenas</h2>
-          <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">Select a battle to dominate</p>
+          <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">যুদ্ধে নামার প্রস্তুতি নিন</p>
         </div>
         <div className="flex bg-white/5 p-1 rounded-xl border border-white/10 overflow-x-auto max-w-full">
           {['All', RoomStatus.UPCOMING, RoomStatus.CANCELLED, RoomStatus.COMPLETE].map((cat) => (
@@ -172,7 +170,7 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
 
             {!selectedMethod ? (
               <div className="space-y-4">
-                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest text-center mb-6">Select Payment Provider</p>
+                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest text-center mb-6">পেমেন্ট মেথড সিলেক্ট করুন</p>
                 <MethodBtn id="bkash" name="bKash" color="bg-[#d12053]" onClick={() => setSelectedMethod('bkash')} />
                 <MethodBtn id="nagad" name="Nagad" color="bg-[#f7941d]" onClick={() => setSelectedMethod('nagad')} />
                 <MethodBtn id="rocket" name="Rocket" color="bg-[#8c348d]" onClick={() => setSelectedMethod('rocket')} />
@@ -180,22 +178,22 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
             ) : (
               <div className="space-y-6 animate-in slide-in-from-right">
                 <div className={`p-6 rounded-3xl ${getMethodDetails(selectedMethod).color} text-white shadow-xl`}>
-                   <p className="text-[10px] font-black uppercase opacity-60 mb-1">Send Money to ({getMethodDetails(selectedMethod).label})</p>
+                   <p className="text-[10px] font-black uppercase opacity-60 mb-1">টাকা পাঠান ({getMethodDetails(selectedMethod).label})</p>
                    <p className="text-3xl font-black tracking-widest">{getMethodDetails(selectedMethod).num}</p>
                 </div>
                 <div className="space-y-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> Open your {selectedMethod} App</p>
-                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> Send exactly ৳{selectedRoom.entryFee} to the number above</p>
-                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> Copy Transaction ID and provide sender info below</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> আপনার {selectedMethod} অ্যাপটি ওপেন করুন</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> এই নাম্বারে ঠিক ৳{selectedRoom.entryFee} টাকা Send Money করুন</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> ট্রানজেকশন আইডি কপি করে নিচের বক্সে দিন</p>
                 </div>
                 <div className="space-y-4">
-                  <input type="text" placeholder="SENDER NUMBER" value={senderNumber} onChange={e => setSenderNumber(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none focus:border-purple-500" />
-                  <input type="text" placeholder="TRANSACTION ID" value={txnId} onChange={e => setTxnId(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none focus:border-purple-500" />
+                  <input type="text" placeholder="যে নাম্বার থেকে টাকা পাঠিয়েছেন" value={senderNumber} onChange={e => setSenderNumber(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none focus:border-purple-500" />
+                  <input type="text" placeholder="ট্রানজেকশন আইডি (TxnID)" value={txnId} onChange={e => setTxnId(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-black outline-none focus:border-purple-500" />
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={() => setSelectedMethod(null)} className="flex-grow py-4 bg-white/5 text-gray-400 rounded-2xl text-[10px] font-black uppercase">Back</button>
+                  <button onClick={() => setSelectedMethod(null)} className="flex-grow py-4 bg-white/5 text-gray-400 rounded-2xl text-[10px] font-black uppercase">পিছনে যান</button>
                   <button onClick={submitPayment} disabled={isSubmitting} className="flex-[2] py-4 bg-purple-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-purple-600/20">
-                    {isSubmitting ? <Loader2 size={16} className="animate-spin mx-auto"/> : 'Submit Payment'}
+                    {isSubmitting ? <Loader2 size={16} className="animate-spin mx-auto"/> : 'কনফার্ম করুন'}
                   </button>
                 </div>
               </div>
@@ -214,18 +212,28 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
                  <h3 className="font-orbitron text-2xl font-black text-white italic uppercase tracking-tighter">{selectedRoom.title}</h3>
                  <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mt-1">Operational Data Center</p>
                </div>
-               <button onClick={() => setSelectedRoom(null)} className="p-3 bg-white/5 rounded-full text-gray-500 hover:text-white"><X size={20}/></button>
+               <button onClick={() => setSelectedRoom(null)} className="p-3 bg-white/5 rounded-full text-gray-500 hover:text-white transition-all"><X size={20}/></button>
             </div>
 
             <div className="p-8 overflow-y-auto space-y-10 custom-scrollbar">
                {selectedRoom.status === RoomStatus.COMPLETE ? (
-                 <div className="text-center py-10"><Trophy className="mx-auto text-purple-500 mb-4" size={48}/> <p className="text-gray-400 uppercase font-bold text-xs">Match results will be uploaded soon by admins.</p></div>
+                 <div className="text-center py-10"><Trophy className="mx-auto text-purple-500 mb-4" size={48}/> <p className="text-gray-400 uppercase font-bold text-xs">ম্যাচ শেষ হয়েছে। রেজাল্ট শীঘ্রই আপডেট করা হবে।</p></div>
                ) : (
                  <>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <DetailBox label="ROOM ID" value={selectedRoom.roomId || "WAITING..."} sub={selectedRoom.roomId ? "Verified" : "Will be updated 15m before start"} />
-                      <DetailBox label="PASSWORD" value={selectedRoom.password || "WAITING..."} sub={selectedRoom.password ? "Verified" : "Will be updated 15m before start"} />
-                   </div>
+                   {/* Conditional Display of ID/Password or Waiting Message */}
+                   {(!selectedRoom.roomId || selectedRoom.roomId.trim() === "") && (!selectedRoom.password || selectedRoom.password.trim() === "") ? (
+                      <div className="p-10 bg-purple-600/5 border border-dashed border-purple-500/20 rounded-3xl flex flex-col items-center justify-center text-center space-y-4 animate-pulse">
+                        <MessageCircle size={40} className="text-purple-500 opacity-50" />
+                        <h4 className="text-lg md:text-xl font-black text-white italic uppercase">
+                          {selectedRoom.waitingMessage || "ম্যাচ শুরুর ১৫ মিনিট আগে রুম আইডি এবং পাসওয়ার্ড দেওয়া হবে।"}
+                        </h4>
+                      </div>
+                   ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in zoom-in duration-500">
+                        <DetailBox label="ROOM ID" value={selectedRoom.roomId || "ERROR"} sub="Verified Operational Code" />
+                        <DetailBox label="PASSWORD" value={selectedRoom.password || "ERROR"} sub="Secure Access Key" />
+                      </div>
+                   )}
                    
                    <div className="space-y-6">
                       <div className="flex items-center justify-between border-l-4 border-green-500 pl-4">
@@ -271,7 +279,7 @@ const DetailBox = ({ label, value, sub }: any) => (
   <div className="p-8 bg-white/5 border border-white/10 rounded-3xl relative overflow-hidden group">
      <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/5 blur-[40px] rounded-full"></div>
      <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-3 italic">{label}</p>
-     <p className={`text-4xl font-black font-orbitron italic mb-2 ${value === "WAITING..." ? "text-gray-700" : "text-white"}`}>{value}</p>
+     <p className="text-4xl font-black font-orbitron italic mb-2 text-white">{value}</p>
      <p className="text-[8px] font-black text-gray-600 uppercase tracking-widest">{sub}</p>
   </div>
 );
