@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, User, Shield, Users, Calendar, AlertCircle, CheckCircle, Loader2, Heart, Trophy, Target, Zap, X, IdCard, Share2 } from 'lucide-react';
 import { AppData, Team, PointEntry } from '../types';
 import { auth, db, collection, onSnapshot, query, where, doc, updateDoc, arrayUnion, arrayRemove } from '../firebase';
@@ -13,10 +14,10 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
   const [approvedTeams, setApprovedTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [selectedPlayer, setSelectedPlayer] = useState<{name: string, ign: string, uid: string} | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [likeAnimating, setLikeAnimating] = useState<string | null>(null);
   const [permissionError, setPermissionError] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const unsubAuth = auth.onAuthStateChanged(user => setCurrentUser(user));
@@ -77,6 +78,10 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
   const getTeamStats = (teamName: string): PointEntry | undefined => {
     if (!teamName) return undefined;
     return appDb.points.find(p => (p.teamName || '').toLowerCase() === (teamName || '').toLowerCase());
+  };
+
+  const viewPlayerProfile = (uid: string) => {
+    if (uid) navigate(`/profile/${uid}`);
   };
 
   if (permissionError) {
@@ -231,7 +236,7 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
                <div className="space-y-8">
                   <div className="flex items-center justify-between">
                      <h4 className="text-xs font-black text-gray-500 uppercase tracking-[0.4em] border-l-4 border-purple-500 pl-4 italic">Active Operatives</h4>
-                     <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Click to view Combat ID</p>
+                     <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Click to view Full Profile</p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                      <PlayerProfileCard 
@@ -239,7 +244,7 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
                         ign={selectedTeam.captainName} 
                         account={selectedTeam.captainAccountName} 
                         uid={selectedTeam.captainUid} 
-                        onClick={() => setSelectedPlayer({name: selectedTeam.captainAccountName || 'Unknown', ign: selectedTeam.captainName, uid: selectedTeam.captainUid})}
+                        onClick={() => viewPlayerProfile(selectedTeam.captainUid)}
                      />
                      {['player2', 'player3', 'player4', 'player5'].map(key => {
                         const name = (selectedTeam as any)[`${key}Name`];
@@ -254,52 +259,13 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
                               account={acc} 
                               uid={uid} 
                               active={!!uid}
-                              onClick={() => uid && setSelectedPlayer({name: acc || 'Unknown', ign: name, uid: uid})}
+                              onClick={() => uid && viewPlayerProfile(uid)}
                            />
                         );
                      })}
                   </div>
                </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {selectedPlayer && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setSelectedPlayer(null)}></div>
-          <div className="relative w-full max-w-sm glass-card rounded-[40px] border-white/20 shadow-2xl overflow-hidden animate-in zoom-in duration-300">
-             <div className="h-28 bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 flex items-center justify-center relative">
-                <div className="absolute -bottom-12 w-24 h-24 rounded-3xl bg-[#060608] border-4 border-purple-500 shadow-2xl flex items-center justify-center overflow-hidden">
-                   <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedPlayer.uid}`} className="w-full h-full object-cover" />
-                </div>
-                <button onClick={() => setSelectedPlayer(null)} className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/40 rounded-full text-white/50 hover:text-white transition-all"><X size={16}/></button>
-             </div>
-             <div className="pt-16 pb-10 px-10 text-center">
-                <h4 className="text-3xl font-black font-orbitron text-white uppercase italic mb-1 tracking-tighter">{selectedPlayer.name}</h4>
-                <p className="text-[10px] font-black text-purple-400 uppercase tracking-[0.4em] mb-8 italic">Genix Athlete Protocol</p>
-                
-                <div className="space-y-4">
-                   <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                      <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">In-Game Identity</span>
-                      <span className="text-sm font-black text-white uppercase italic">{selectedPlayer.ign}</span>
-                   </div>
-                   <div className="flex justify-between items-center p-4 bg-white/5 rounded-2xl border border-white/5">
-                      <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">System UID</span>
-                      <span className="text-xs font-mono font-bold text-gray-400 tracking-tighter">{selectedPlayer.uid}</span>
-                   </div>
-                </div>
-
-                <div className="mt-10 pt-8 border-t border-white/5 flex flex-col items-center space-y-3">
-                   <div className="flex items-center space-x-3 opacity-40">
-                      <IdCard size={18} className="text-gray-500" />
-                      <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em]">Verified GENIX Operative</span>
-                   </div>
-                   <div className="w-full h-8 bg-gradient-to-r from-transparent via-white/5 to-transparent rounded-full flex items-center justify-center">
-                      <div className="w-2/3 h-[1px] bg-gradient-to-r from-transparent via-purple-500/50 to-transparent"></div>
-                   </div>
-                </div>
-             </div>
           </div>
         </div>
       )}

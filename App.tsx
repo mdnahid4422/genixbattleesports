@@ -151,6 +151,7 @@ const AppContent: React.FC<{ appDb: AppData; setAppDb: any; currentUser: UserPro
           <Route path="/contact" element={<Contact />} />
           <Route path="/login" element={<Login currentUser={currentUser} />} />
           <Route path="/profile" element={<Profile user={currentUser} />} />
+          <Route path="/profile/:uid" element={<Profile user={currentUser} />} />
           <Route path="/admin" element={<Admin db={appDb} setDb={setAppDb} currentUser={currentUser} />} />
         </Routes>
       </main>

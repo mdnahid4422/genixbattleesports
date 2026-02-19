@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Mail, Lock, Check, User, UserPlus, Loader2, XCircle, Info, AlertTriangle } from 'lucide-react';
@@ -31,17 +32,32 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
             <img src="/image/logo.png" alt="Logo" className="w-full h-full object-contain" />
           </div>
           <h3 className="text-2xl font-black text-white uppercase italic mb-2">Authenticated</h3>
-          <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-8">You are currently logged in as {currentUser.displayName}</p>
+          <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mb-8">You are currently logged in as {currentUser.fullName}</p>
           <button 
-            onClick={() => navigate(currentUser.isAdmin ? '/admin' : '/registration')} 
+            onClick={() => navigate('/profile')} 
             className="w-full py-4 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-purple-600/20"
           >
-            {currentUser.isAdmin ? 'Go to Admin Dashboard' : 'Go to My Team'}
+            Go to My Profile
           </button>
         </div>
       </div>
     );
   }
+
+  const syncUserToFirestore = async (user: any, name?: string) => {
+    const userDocRef = doc(db, 'users', user.uid);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists()) {
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        fullName: name || user.displayName || 'Player',
+        email: user.email,
+        role: 'player',
+        photoURL: user.photoURL || null,
+        createdAt: new Date().toISOString()
+      });
+    }
+  };
 
   const handleGoogleLogin = async () => {
     if (isBlobUrl) {
@@ -54,17 +70,7 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (result.user) {
-        const userDocRef = doc(db, 'users', result.user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (!userDoc.exists()) {
-          await setDoc(userDocRef, {
-            uid: result.user.uid,
-            fullName: result.user.displayName || 'Google User',
-            email: result.user.email,
-            role: 'player',
-            createdAt: new Date().toISOString()
-          });
-        }
+        await syncUserToFirestore(result.user);
         navigate('/');
       }
     } catch (err: any) {
@@ -85,11 +91,17 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
     setErrorMessage(null);
     try {
       if (isLoginMode) {
-        await signInWithEmailAndPassword(auth, email, password);
+        const res = await signInWithEmailAndPassword(auth, email, password);
+        await syncUserToFirestore(res.user);
         navigate('/');
       } else {
         if (password !== confirmPassword) {
           setErrorMessage("পাসওয়ার্ড মিলেনি!");
+          setAuthLoading(false);
+          return;
+        }
+        if (!fullName) {
+          setErrorMessage("দয়া করে নাম প্রদান করুন!");
           setAuthLoading(false);
           return;
         }
@@ -121,7 +133,7 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
 
         {errorMessage && (
           <div className="mb-8 p-5 bg-red-600/10 border border-red-500/30 rounded-[24px] flex items-center gap-4 animate-in shake duration-500">
-            <XCircle className="text-red-500 shrink-0" size={20} />
+            <AlertTriangle className="text-red-500 shrink-0" size={20} />
             <p className="text-sm text-red-100 font-bold leading-relaxed">{errorMessage}</p>
           </div>
         )}
@@ -163,7 +175,7 @@ const Login: React.FC<{ currentUser: any }> = ({ currentUser }) => {
             </div>
           )}
 
-          <button type="submit" disabled={authLoading} className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-xs tracking-widest shadow-xl shadow-purple-600/30 hover:bg-purple-700 transition-all flex items-center justify-center gap-2 mt-4">
+          <button type="submit" disabled={authLoading} className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-xs tracking-widest shadow-xl shadow-purple-600/20 hover:bg-purple-700 transition-all flex items-center justify-center gap-2 mt-4">
             {authLoading ? <Loader2 size={18} className="animate-spin" /> : isLoginMode ? <span>Login to Account</span> : <span>Create Account</span>}
           </button>
         </form>
