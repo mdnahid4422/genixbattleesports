@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, SpecialBadge, Team } from '../types';
-import { Camera, Loader2, Save, LogOut, CheckCircle2, Shield, Target, Trophy, Award, Zap, ArrowLeft, UserPlus, XCircle, Edit3, X, User as UserIcon, IdCard, Users, Sparkles, ChevronRight, Share2, Heart, Star } from 'lucide-react';
+import { Camera, Loader2, Save, LogOut, CheckCircle2, Shield, Target, Trophy, Award, Zap, ArrowLeft, UserPlus, XCircle, Edit3, X, User as UserIcon, IdCard, Users, Sparkles, ChevronRight, Share2, Heart, Star, EyeOff, Eye, Upload } from 'lucide-react';
 import { db, doc, onSnapshot, getDoc, updateDoc, setDoc, auth, signOut } from '../firebase';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import EvolutionHub from '../components/EvolutionHub';
@@ -14,6 +14,7 @@ interface ProfileProps {
 const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
   const { uid: routeUid } = useParams<{ uid: string }>();
   const location = useLocation();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [teamData, setTeamData] = useState<Team | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -22,6 +23,10 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
   
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
+  const [editPhoto, setEditPhoto] = useState('');
+  const [hideBadges, setHideBadges] = useState(false);
+  const [hideScores, setHideScores] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
   
   const [fetching, setFetching] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -49,11 +54,16 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
           level: data.level || 1,
           exp: data.exp || 0,
           totalExp: data.totalExp || 0,
-          dailyAdsCount: data.dailyAdsCount || 0
+          dailyAdsCount: data.dailyAdsCount || 0,
+          hideBadges: data.hideBadges || false,
+          hideScores: data.hideScores || false
         };
         setProfileData(updatedData);
         setEditName(data.fullName || '');
         setEditBio(data.bio || '');
+        setEditPhoto(data.photoURL || '');
+        setHideBadges(data.hideBadges || false);
+        setHideScores(data.hideScores || false);
 
         if (data.teamId) {
           const teamSnap = await getDoc(doc(db, 'registrations', data.teamId));
@@ -73,7 +83,9 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
             level: 1,
             exp: 0,
             totalExp: 0,
-            dailyAdsCount: 0
+            dailyAdsCount: 0,
+            hideBadges: false,
+            hideScores: false
           };
           await setDoc(doc(db, 'users', auth.currentUser.uid), newProfile);
         } else { setProfileData(null); setFetching(false); }
@@ -83,6 +95,37 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
     return () => unsub();
   }, [routeUid, loggedInUser, isOwnProfile]);
 
+  const compressImage = (base64Str: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = base64Str;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_DIM = 400; 
+        let width = img.width, height = img.height;
+        if (width > height) { if (width > MAX_DIM) { height *= MAX_DIM / width; width = MAX_DIM; } }
+        else { if (height > MAX_DIM) { width *= MAX_DIM / height; height = MAX_DIM; } }
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+    });
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsProcessingImage(true);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const compressed = await compressImage(reader.result as string);
+        setEditPhoto(compressed);
+        setIsProcessingImage(false);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleLogout = async () => { try { await signOut(auth); navigate('/login'); } catch (err) {} };
 
   if (fetching) return <div className="min-h-[60vh] flex flex-col items-center justify-center"><Loader2 size={48} className="animate-spin text-purple-500 mb-4" /><p className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic">Syncing Operative Profile...</p></div>;
@@ -90,6 +133,10 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
 
   const requiredExp = getRequiredExpForLevel(profileData.level || 1);
   const expPercentage = ((profileData.exp || 0) / requiredExp) * 100;
+
+  // Logic to determine what to show
+  const showBadges = isOwnProfile || !profileData.hideBadges;
+  const showScores = isOwnProfile || !profileData.hideScores;
 
   return (
     <div className="py-12 px-4 md:px-8 max-w-5xl mx-auto min-h-screen animate-in fade-in duration-700">
@@ -117,7 +164,6 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
             <div className="relative">
               <div className="w-48 h-48 rounded-[52px] border-[10px] border-[#060608] bg-[#0b0b0e] overflow-hidden shadow-2xl relative group">
                 <img src={profileData.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileData.uid}`} className="w-full h-full object-cover" alt="Profile" />
-                {isOwnProfile && <button onClick={() => setIsEditModalOpen(true)} className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Camera size={32} className="text-white" /></button>}
               </div>
               <div className="absolute -bottom-2 -right-2 bg-blue-600 p-2.5 rounded-2xl border-4 border-[#060608] shadow-lg"><CheckCircle2 size={24} className="text-white" /></div>
             </div>
@@ -139,10 +185,17 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
                </button>
                <p className="text-gray-500 font-black uppercase tracking-[0.3em] text-[10px] italic flex items-center justify-center md:justify-start gap-2"><IdCard size={12} className="text-purple-500" /> #{profileData.uid.slice(0, 10).toUpperCase()}</p>
             </div>
-            <div className="flex flex-wrap justify-center gap-4">
-              <StatPlate label="Elims" value={profileData.totalKills || 0} icon={<Target size={14}/>} color="from-red-600/20 to-red-900/20 text-red-400" border="border-red-500/30" />
-              <StatPlate label="Total EXP" value={profileData.totalExp || 0} icon={<Zap size={14}/>} color="from-yellow-600/20 to-yellow-900/20 text-yellow-400" border="border-yellow-500/30" />
-            </div>
+            {showScores && (
+              <div className="flex flex-wrap justify-center gap-4">
+                <StatPlate label="Elims" value={profileData.totalKills || 0} icon={<Target size={14}/>} color="from-red-600/20 to-red-900/20 text-red-400" border="border-red-500/30" />
+                <StatPlate label="Total EXP" value={profileData.totalExp || 0} icon={<Zap size={14}/>} color="from-yellow-600/20 to-yellow-900/20 text-yellow-400" border="border-yellow-500/30" />
+              </div>
+            )}
+            {!showScores && isOwnProfile && (
+              <div className="flex items-center gap-2 text-gray-500 italic text-[10px] font-black uppercase bg-white/5 px-4 py-2 rounded-xl border border-white/5">
+                <EyeOff size={12} /> Scores Hidden for Others
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
@@ -152,18 +205,25 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
                 <div className="p-8 bg-white/5 border border-white/10 rounded-[32px] shadow-inner"><p className="text-gray-300 font-medium italic leading-relaxed">{profileData.bio || "Bio protocols not initialized."}</p></div>
               </div>
 
-              <div className="space-y-6">
-                <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">Achievement Matrix</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <BadgeItem icon={<Shield size={18}/>} label={profileData.role} color={profileData.role === 'owner' ? 'from-red-600' : 'from-purple-600'} />
-                  <BadgeItem icon={<Award size={18}/>} label={profileData.position || 'Recruit'} color="from-blue-500" />
+              {showBadges && (
+                <div className="space-y-6">
+                  <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">Achievement Matrix</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <BadgeItem icon={<Shield size={18}/>} label={profileData.role} color={profileData.role === 'owner' ? 'from-red-600' : 'from-purple-600'} />
+                    <BadgeItem icon={<Award size={18}/>} label={profileData.position || 'Recruit'} color="from-blue-500" />
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-2 gap-4 mt-6">
+                    {profileData.specialBadges && profileData.specialBadges.length > 0 ? profileData.specialBadges.map((badge) => (
+                      <SpecialAnimatedBadge key={badge} label={badge} />
+                    )) : <div className="col-span-full py-10 border border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-gray-600"><Sparkles size={24} className="mb-2 opacity-20" /><span className="text-[9px] font-black uppercase tracking-[0.2em] italic">No Elite Badges Assigned</span></div>}
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-2 gap-4 mt-6">
-                  {profileData.specialBadges && profileData.specialBadges.length > 0 ? profileData.specialBadges.map((badge) => (
-                    <SpecialAnimatedBadge key={badge} label={badge} />
-                  )) : <div className="col-span-full py-10 border border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-gray-600"><Sparkles size={24} className="mb-2 opacity-20" /><span className="text-[9px] font-black uppercase tracking-[0.2em] italic">No Elite Badges Assigned</span></div>}
+              )}
+              {!showBadges && isOwnProfile && (
+                <div className="flex items-center gap-2 text-gray-500 italic text-[10px] font-black uppercase bg-white/5 px-4 py-2 rounded-xl border border-white/5">
+                  <EyeOff size={12} /> Badges Hidden for Others
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="lg:col-span-5 space-y-8">
@@ -194,7 +254,101 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
         expPercentage={expPercentage} 
       />
 
-      {isEditModalOpen && <div className="fixed inset-0 z-[200] flex items-center justify-center p-4"><div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setIsEditModalOpen(false)}></div><div className="relative w-full max-w-lg glass-card rounded-[50px] border-white/20 p-10 shadow-2xl animate-in zoom-in duration-300"><div className="flex justify-between items-center mb-10"><h3 className="font-orbitron text-2xl font-black text-white uppercase italic tracking-tighter">Edit Protocols</h3><button onClick={() => setIsEditModalOpen(false)} className="p-2 text-gray-500 hover:text-white transition-all"><X size={24}/></button></div><div className="space-y-8"><div className="space-y-3"><label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">FullName</label><input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-purple-500 outline-none transition-all shadow-inner" /></div><div className="space-y-3"><label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">Bio</label><textarea rows={3} value={editBio} onChange={e => setEditBio(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-purple-500 outline-none transition-all shadow-inner resize-none" /></div><div className="pt-4"><button onClick={async () => { setLoading(true); await updateDoc(doc(db, 'users', profileData.uid), { fullName: editName, bio: editBio }); setLoading(false); setIsEditModalOpen(false); }} disabled={loading} className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-purple-600/30 hover:scale-[1.02] transition-all flex items-center justify-center gap-3">{loading ? <Loader2 size={20} className="animate-spin" /> : <><Save size={20}/> Save Protocols</>}</button></div></div></div></div>}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-xl" onClick={() => setIsEditModalOpen(false)}></div>
+          <div className="relative w-full max-w-xl glass-card rounded-[50px] border-white/20 p-8 md:p-10 shadow-2xl animate-in zoom-in duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar">
+            <div className="flex justify-between items-center mb-10">
+              <h3 className="font-orbitron text-2xl font-black text-white uppercase italic tracking-tighter">Edit Protocols</h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="p-2 text-gray-500 hover:text-white transition-all"><X size={24}/></button>
+            </div>
+            
+            <div className="space-y-8">
+              {/* Photo Upload */}
+              <div className="flex flex-col items-center space-y-4">
+                <div className="relative group">
+                  <div className="w-32 h-32 rounded-[28px] border-4 border-purple-500/30 overflow-hidden bg-black/50">
+                    <img src={editPhoto || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profileData.uid}`} className="w-full h-full object-cover" />
+                    {isProcessingImage && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                        <Loader2 className="animate-spin text-purple-500" />
+                      </div>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute -bottom-2 -right-2 p-3 bg-purple-600 text-white rounded-2xl border-4 border-[#060608] hover:scale-110 transition-all shadow-lg"
+                  >
+                    <Upload size={16} />
+                  </button>
+                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                </div>
+                <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest italic">Identity Visualization (Photo)</p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">Full Name</label>
+                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-purple-500 outline-none transition-all shadow-inner font-bold" />
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-gray-500 uppercase ml-4 tracking-widest">Bio Protocol</label>
+                <textarea rows={3} value={editBio} onChange={e => setEditBio(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-sm focus:border-purple-500 outline-none transition-all shadow-inner resize-none font-medium" />
+              </div>
+
+              {/* Privacy Toggles */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <button 
+                  onClick={() => setHideBadges(!hideBadges)}
+                  className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${hideBadges ? 'bg-red-600/10 border-red-500/30 text-red-500' : 'bg-white/5 border-white/10 text-gray-400'}`}
+                 >
+                    <div className="flex items-center gap-3">
+                      {hideBadges ? <EyeOff size={16}/> : <Eye size={16}/>}
+                      <span className="text-[10px] font-black uppercase tracking-widest">Hide Badges</span>
+                    </div>
+                    <div className={`w-8 h-4 rounded-full relative transition-all ${hideBadges ? 'bg-red-500' : 'bg-gray-800'}`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${hideBadges ? 'left-4.5' : 'left-0.5'}`}></div>
+                    </div>
+                 </button>
+
+                 <button 
+                  onClick={() => setHideScores(!hideScores)}
+                  className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${hideScores ? 'bg-orange-600/10 border-orange-500/30 text-orange-500' : 'bg-white/5 border-white/10 text-gray-400'}`}
+                 >
+                    <div className="flex items-center gap-3">
+                      {hideScores ? <EyeOff size={16}/> : <Eye size={16}/>}
+                      <span className="text-[10px] font-black uppercase tracking-widest">Hide Scores</span>
+                    </div>
+                    <div className={`w-8 h-4 rounded-full relative transition-all ${hideScores ? 'bg-orange-500' : 'bg-gray-800'}`}>
+                      <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${hideScores ? 'left-4.5' : 'left-0.5'}`}></div>
+                    </div>
+                 </button>
+              </div>
+
+              <div className="pt-4">
+                <button 
+                  onClick={async () => { 
+                    setLoading(true); 
+                    await updateDoc(doc(db, 'users', profileData.uid), { 
+                      fullName: editName, 
+                      bio: editBio, 
+                      photoURL: editPhoto,
+                      hideBadges: hideBadges,
+                      hideScores: hideScores
+                    }); 
+                    setLoading(false); 
+                    setIsEditModalOpen(false); 
+                  }} 
+                  disabled={loading || isProcessingImage} 
+                  className="w-full py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-purple-600/30 hover:scale-[1.02] transition-all flex items-center justify-center gap-3"
+                >
+                  {loading ? <Loader2 size={20} className="animate-spin" /> : <><Save size={20}/> Confirm Update</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes sweep { 0% { transform: translateX(-150%) skewX(-15deg); } 100% { transform: translateX(150%) skewX(-15deg); } }

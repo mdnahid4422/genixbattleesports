@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, User, Phone, Camera, Loader2, Mail, Edit3, Eye, ArrowRight, UserPlus, Search, Check, X, Clock, CheckCircle, Target, UserCircle } from 'lucide-react';
+import { Shield, User, Phone, Camera, Loader2, Mail, Edit3, Eye, ArrowRight, UserPlus, Search, Check, X, Clock, CheckCircle, Target, UserCircle, UserMinus, Save, Trash2, AlertTriangle, Settings2 } from 'lucide-react';
 import { AppData, Team, PlayerPosition } from '../types';
-import { auth, db, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, onAuthStateChanged } from '../firebase';
+import { auth, db, doc, getDoc, setDoc, updateDoc, collection, onSnapshot, onAuthStateChanged, deleteDoc } from '../firebase';
 
 interface RegistrationProps {
   db: AppData;
@@ -38,7 +38,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Only store serializable properties from the circular User object
         setCurrentUser({ uid: user.uid, email: user.email || '', displayName: user.displayName || undefined });
         try {
           const regDoc = await getDoc(doc(db, 'registrations', user.uid));
@@ -126,9 +125,47 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       setUserRegistration(payload as any);
       setIsEditing(false);
       setViewState('view_team');
-      alert("Registration submitted!");
+      alert("Registration data synchronized!");
     } catch (err) {
       alert("Error saving data.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleKickPlayer = async (slotNum: number) => {
+    if (!currentUser || !userRegistration) return;
+    const playerUid = (userRegistration as any)[`player${slotNum}Uid`];
+    const playerName = (userRegistration as any)[`player${slotNum}Name`];
+
+    if (!window.confirm(`Are you sure you want to remove ${playerName} from the squad?`)) return;
+
+    setIsLoading(true);
+    try {
+      // 1. Update Registration Doc to clear the slot
+      const updatedTeam = { 
+        ...userRegistration, 
+        [`player${slotNum}Name`]: '',
+        [`player${slotNum}Uid`]: '',
+        [`player${slotNum}AccountName`]: '' 
+      };
+      await setDoc(doc(db, 'registrations', currentUser.uid), updatedTeam);
+
+      // 2. Update the kicked player's user document to remove team allegiance
+      if (playerUid) {
+        await updateDoc(doc(db, 'users', playerUid), { 
+          position: null, 
+          teamId: null 
+        });
+        // Also remove membership record if exists
+        await deleteDoc(doc(db, 'users_membership', playerUid)).catch(() => {});
+      }
+
+      setUserRegistration(updatedTeam as any);
+      setFormData(updatedTeam as any);
+      alert(`${playerName} has been removed from the roster.`);
+    } catch (err) {
+      alert("Failed to kick operative. Access denied.");
     } finally {
       setIsLoading(false);
     }
@@ -153,6 +190,7 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       };
       await setDoc(doc(db, 'registrations', currentUser.uid), updatedTeam);
       setUserRegistration(updatedTeam as any);
+      setFormData(updatedTeam as any);
       alert("Player added with role: " + playerPos);
     } catch (err) { alert("Error approving."); }
   };
@@ -179,7 +217,14 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
     return (
       <div className="py-12 px-4 max-w-5xl mx-auto animate-in fade-in">
         <div className="glass-card rounded-[40px] border-white/10 overflow-hidden shadow-2xl">
-          <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 p-8 md:p-12 flex flex-col md:flex-row items-center gap-8 border-b border-white/10">
+          <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 p-8 md:p-12 flex flex-col md:flex-row items-center gap-8 border-b border-white/10 relative">
+            <div className="absolute top-6 right-8 flex gap-3">
+              {isCaptain && (
+                <button onClick={() => setIsEditing(true)} className="px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-purple-400 hover:bg-white/10 transition-all flex items-center gap-2">
+                  <Settings2 size={14} /> Manage Squad
+                </button>
+              )}
+            </div>
             <img src={userRegistration.teamLogo || 'https://via.placeholder.com/150'} className="w-40 h-40 rounded-[32px] border-4 border-purple-500/30 object-cover shadow-2xl" />
             <div className="text-center md:text-left flex-grow">
               <h3 className="text-4xl font-black font-orbitron text-white uppercase italic tracking-tighter mb-2">{userRegistration.teamName}</h3>
@@ -251,54 +296,102 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
 
   return (
     <div className="py-12 px-4 md:px-8 max-w-5xl mx-auto animate-in fade-in">
-       <div className="glass-card p-8 md:p-12 rounded-[40px] border-white/10">
-        <form onSubmit={handleSubmit} className="space-y-10">
+       <div className="glass-card p-8 md:p-12 rounded-[40px] border-white/10 relative">
+        <div className="flex justify-between items-center mb-10">
+           <h2 className="font-orbitron text-2xl font-black text-white uppercase italic tracking-tighter border-l-4 border-purple-500 pl-6">Tactical Management</h2>
+           <button onClick={() => setIsEditing(false)} className="p-3 bg-white/5 rounded-full text-gray-500 hover:text-white transition-all"><X size={20}/></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-12">
           <div className="flex flex-col items-center">
             <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-              <div className="w-32 h-32 rounded-[28px] border-2 border-dashed border-white/20 flex items-center justify-center overflow-hidden">
-                {formData.teamLogo ? <img src={formData.teamLogo} className="w-full h-full object-cover" /> : <Camera size={32} className="text-gray-500" />}
+              <div className="w-36 h-36 rounded-[40px] border-4 border-dashed border-white/20 flex items-center justify-center overflow-hidden transition-all group-hover:border-purple-500/50">
+                {formData.teamLogo ? <img src={formData.teamLogo} className="w-full h-full object-cover" /> : <Camera size={40} className="text-gray-500" />}
+                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                   <UploadCloud size={24} className="text-white mb-2" />
+                   <span className="text-[8px] font-black uppercase tracking-widest text-white">Change Logo</span>
+                </div>
               </div>
               <input type="file" ref={fileInputRef} onChange={handleLogoUpload} className="hidden" accept="image/*" />
+              {isProcessingImage && <div className="absolute inset-0 bg-black/80 flex items-center justify-center rounded-[40px]"><Loader2 size={24} className="animate-spin text-purple-500" /></div>}
             </div>
+            <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest mt-4 italic">Team Visual Protocol (Click to Change)</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <InputGroup label="Team Name *" value={formData.teamName} onChange={(v: string) => setFormData({...formData, teamName: v})} />
-            <InputGroup label="WhatsApp *" value={formData.phone} onChange={(v: string) => setFormData({...formData, phone: v})} />
+            <InputGroup label="Squad Name *" value={formData.teamName} onChange={(v: string) => setFormData({...formData, teamName: v})} />
+            <InputGroup label="Command WhatsApp *" value={formData.phone} onChange={(v: string) => setFormData({...formData, phone: v})} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-10 border-t border-white/5">
-            <div className="p-6 bg-purple-600/5 rounded-3xl border border-purple-500/20 space-y-4 md:col-span-2">
-               <p className="text-[10px] font-black text-purple-400 uppercase">P1 Captain (Me)</p>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <InputGroup label="My In-Game Name *" value={formData.captainName} onChange={(v: string) => setFormData({...formData, captainName: v})} />
-                  <InputGroup label="My UID *" value={formData.captainUid} onChange={(v: string) => setFormData({...formData, captainUid: v})} />
-               </div>
+          <div className="space-y-6 pt-10 border-t border-white/5">
+            <div className="flex items-center justify-between mb-4">
+               <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest italic border-l-4 border-blue-500 pl-4">Roster Management</h4>
+               <p className="text-[9px] font-black text-red-400 uppercase tracking-widest flex items-center gap-2"><AlertTriangle size={10} /> Authorized Personnel Only</p>
             </div>
-            {[2, 3, 4, 5].map(num => (
-              <div key={num} className="p-6 bg-white/5 rounded-3xl border border-white/10 space-y-4">
-                 <p className="text-[10px] font-black text-blue-400 uppercase italic">Player {num} {num === 5 ? '(Optional)' : '*'}</p>
-                 <InputGroup label="IGN" value={(formData as any)[`player${num}Name`]} onChange={(v: string) => setFormData({...formData, [`player${num}Name`]: v})} />
-                 <div className="space-y-2">
-                    <label className="text-[10px] font-black text-gray-500 uppercase ml-2">Assigned Role</label>
-                    <select 
-                      value={(formData as any)[`player${num}Position`]} 
-                      onChange={e => setFormData({...formData, [`player${num}Position`]: e.target.value as PlayerPosition})}
-                      className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white text-xs font-bold outline-none"
-                    >
-                       <option value="1st Rusher">1st Rusher</option>
-                       <option value="2nd Rusher">2nd Rusher</option>
-                       <option value="Supporter">Supporter</option>
-                       <option value="Sniper Player">Sniper Player</option>
-                       <option value="Backup Player">Backup Player</option>
-                       <option value="Coach">Coach</option>
-                       <option value="Manager">Manager</option>
-                    </select>
-                 </div>
-              </div>
-            ))}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+               {/* P1 Captain - Un-kickable */}
+               <div className="p-8 bg-purple-600/10 rounded-[32px] border border-purple-500/30 space-y-5 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-3 opacity-20"><Shield size={60} /></div>
+                  <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest italic">P1 | Primary Commander</p>
+                  <div className="space-y-4 relative z-10">
+                     <InputGroup label="IGN" value={formData.captainName} onChange={(v: string) => setFormData({...formData, captainName: v})} />
+                     <InputGroup label="Account UID" value={formData.captainUid} onChange={(v: string) => setFormData({...formData, captainUid: v})} />
+                  </div>
+               </div>
+
+               {[2, 3, 4, 5].map(num => {
+                 const isSlotTaken = !!(userRegistration as any)[`player${num}Uid`];
+                 return (
+                  <div key={num} className={`p-8 rounded-[32px] border space-y-5 relative transition-all ${isSlotTaken ? 'bg-white/5 border-white/10' : 'bg-black/20 border-white/5 opacity-60'}`}>
+                     <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest italic">P{num} | Operative Slot</p>
+                        {isSlotTaken && (
+                          <button 
+                            type="button" 
+                            onClick={() => handleKickPlayer(num)}
+                            className="p-2.5 bg-red-600/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-lg flex items-center gap-2 group/kick"
+                          >
+                             <UserMinus size={14} className="group-hover/kick:scale-110" />
+                             <span className="text-[8px] font-black uppercase">Kick</span>
+                          </button>
+                        )}
+                     </div>
+                     <div className="space-y-4">
+                        <InputGroup label="Operative IGN" value={(formData as any)[`player${num}Name`]} onChange={(v: string) => setFormData({...formData, [`player${num}Name`]: v})} placeholder={isSlotTaken ? '' : 'Vacant Slot'} />
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">Tactical Role</label>
+                          <select 
+                            value={(formData as any)[`player${num}Position`]} 
+                            onChange={e => setFormData({...formData, [`player${num}Position`]: e.target.value as PlayerPosition})}
+                            className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-bold outline-none focus:border-purple-500 transition-all shadow-inner"
+                          >
+                            <option value="1st Rusher">1st Rusher</option>
+                            <option value="2nd Rusher">2nd Rusher</option>
+                            <option value="Supporter">Supporter</option>
+                            <option value="Sniper Player">Sniper Player</option>
+                            <option value="Backup Player">Backup Player</option>
+                            <option value="Coach">Coach</option>
+                            <option value="Manager">Manager</option>
+                          </select>
+                        </div>
+                     </div>
+                  </div>
+                 );
+               })}
+            </div>
           </div>
-          <button type="submit" className="w-full py-5 bg-purple-600 rounded-2xl font-black uppercase text-white shadow-xl shadow-purple-600/20">Submit Roster</button>
+
+          <div className="flex flex-col sm:flex-row gap-4 pt-10 border-t border-white/5">
+             <button type="button" onClick={() => setIsEditing(false)} className="flex-grow py-5 bg-white/5 text-gray-500 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-white/10 transition-all border border-white/10 italic">Discard Modifications</button>
+             <button 
+               type="submit" 
+               disabled={isLoading || isProcessingImage} 
+               className="flex-[2] py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-purple-600/30 hover:scale-[1.01] transition-all flex items-center justify-center gap-3 italic"
+             >
+                {isLoading ? <Loader2 size={20} className="animate-spin" /> : <><Save size={20}/> Deploy Roster Updates</>}
+             </button>
+          </div>
         </form>
       </div>
     </div>
@@ -318,16 +411,29 @@ const RosterRow = ({ name, role, active, onClick }: any) => (
     onClick={onClick}
     className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${active ? 'bg-purple-600/10 border-purple-500/30 cursor-pointer hover:bg-purple-600/20' : 'bg-white/2 border-white/5 opacity-40'}`}
   >
-    <span className="text-sm font-black italic text-white uppercase group-hover:text-purple-400">{name || 'EMPTY'}</span>
+    <div className="flex items-center gap-3">
+       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? 'bg-purple-600/20 text-purple-400' : 'bg-gray-800 text-gray-600'}`}>
+          <User size={14} />
+       </div>
+       <span className="text-sm font-black italic text-white uppercase group-hover:text-purple-400">{name || 'VACANT'}</span>
+    </div>
     <span className="text-[9px] font-black text-purple-400 uppercase tracking-widest">{role}</span>
   </div>
 );
 
 const InputGroup = ({ label, value, onChange, placeholder }: any) => (
   <div className="flex flex-col space-y-2 text-left w-full">
-    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</label>
-    <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:border-purple-500 outline-none font-semibold" />
+    <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-2">{label}</label>
+    <input type="text" value={value || ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-black/50 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:border-purple-500 outline-none font-bold shadow-inner transition-all" />
   </div>
+);
+
+const UploadCloud = ({ size, className }: any) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.3-1.7-4.1-3.9-4.5A7 7 0 1 0 5 13.04a4.5 4.5 0 1 0 0 8.96h12.5" />
+    <path d="M12 12v9" />
+    <path d="m16 16-4-4-4 4" />
+  </svg>
 );
 
 export default Registration;

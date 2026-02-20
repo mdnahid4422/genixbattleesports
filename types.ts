@@ -48,6 +48,9 @@ export interface UserProfile {
   dailyAdsCount?: number;
   lastAdDate?: string;
   tasksProgress?: TaskProgress[];
+  // Privacy Settings
+  hideBadges?: boolean;
+  hideScores?: boolean;
 }
 
 export interface TeamMatchStats {

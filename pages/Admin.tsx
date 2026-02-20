@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Shield, Trophy, Users, Target, Zap, Loader2, Save, Trash2, Edit3, X, Lock, UploadCloud, CreditCard, MessageSquare, AlertTriangle, Star, Search, CheckCircle2, UserCircle } from 'lucide-react';
+import { LogOut, Shield, Trophy, Users, Target, Zap, Loader2, Save, Trash2, Edit3, X, Lock, UploadCloud, CreditCard, MessageSquare, AlertTriangle, Star, Search, CheckCircle2, UserCircle, UserPlus, Check } from 'lucide-react';
 import { auth, signOut, db, doc, setDoc, updateDoc, collection, onSnapshot, deleteDoc, query, where, getDocs } from '../firebase';
-import { AppData, Room, RoomStatus, Order, UserProfile, SpecialBadge, UserRole } from '../types';
+import { AppData, Room, RoomStatus, Order, UserProfile, SpecialBadge, UserRole, Team } from '../types';
 
 interface AdminProps {
   db: AppData;
@@ -12,11 +12,12 @@ interface AdminProps {
 }
 
 const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'rooms' | 'points' | 'teams' | 'orders' | 'badges'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'points' | 'teams_approval' | 'orders' | 'badges'>('rooms');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [roomFormData, setRoomFormData] = useState<Partial<Room>>({});
   const [orders, setOrders] = useState<Order[]>([]);
+  const [pendingTeams, setPendingTeams] = useState<Team[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [checkingAccess, setCheckingAccess] = useState(true);
@@ -28,7 +29,6 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
   const isAuthorized = isOwner || isAdmin || isModerator;
 
   useEffect(() => {
-    // অননুমোদিত ইউজারদের সরাসরি হোমপেজে পাঠিয়ে দেওয়া হবে, কোনো মেসেজ দেখানো হবে না
     if (currentUser) {
       if (!isAuthorized) {
         navigate('/');
@@ -36,7 +36,6 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
         setCheckingAccess(false);
       }
     } else {
-      // যদি লগইন না করা থাকে তবে কিছুক্ষণ অপেক্ষা করে রিডাইরেক্ট করা হবে (লোডিং শেষ হওয়া পর্যন্ত)
       const timer = setTimeout(() => {
         if (!auth.currentUser) navigate('/');
       }, 2000);
@@ -46,15 +45,23 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
 
   useEffect(() => {
     if (isAuthorized) {
+      // Listen for orders
       const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
         setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
       });
 
+      // Listen for pending teams (isApproved: false)
+      const qPending = query(collection(db, 'registrations'), where('isApproved', '==', false));
+      const unsubPendingTeams = onSnapshot(qPending, (snap) => {
+        setPendingTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team)));
+      });
+
+      // Listen for all users
       const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
         setAllUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
       });
 
-      return () => { unsubOrders(); unsubUsers(); };
+      return () => { unsubOrders(); unsubPendingTeams(); unsubUsers(); };
     }
   }, [isAuthorized]);
 
@@ -64,11 +71,12 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
   const canEdit = isOwner || isAdmin;
   const canApprove = isAuthorized;
 
-  // সাইলেন্ট প্রোটেকশন: পারমিশন না থাকলে কিছুই রেন্ডার হবে না
   if (checkingAccess || !isAuthorized) {
     return null;
   }
 
+  // --- Functions ---
+  
   const approveOrder = async (order: Order) => {
     if (!canApprove) return;
     try {
@@ -91,10 +99,26 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
         setDb(sanitizedDb);
         await setDoc(doc(db, 'app', 'global_data'), sanitizedDb);
       }
-      alert("পেমেন্ট এপ্রুভ করা হয়েছে!");
+      alert("Payment Approved & Slot Booked!");
     } catch (e) { 
-      console.error(e);
-      alert("এপ্রুভ করতে সমস্যা হয়েছে।"); 
+      alert("Error approving payment."); 
+    }
+  };
+
+  const approveTeam = async (team: Team) => {
+    if (!canApprove) return;
+    try {
+      await updateDoc(doc(db, 'registrations', team.id), { isApproved: true });
+      alert(`Team ${team.teamName} has been approved!`);
+    } catch (e) {
+      alert("Failed to approve team.");
+    }
+  };
+
+  const deleteTeam = async (id: string) => {
+    if (!canDelete) return;
+    if (window.confirm("Are you sure you want to delete this team request?")) {
+      await deleteDoc(doc(db, 'registrations', id));
     }
   };
 
@@ -105,16 +129,16 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
       const badges = user?.specialBadges || [];
       const updatedBadges = badges.includes(badge) ? badges.filter(b => b !== badge) : [...badges, badge];
       await updateDoc(doc(db, 'users', uid), { specialBadges: updatedBadges });
-      alert("প্লেয়ার ব্যাজ আপডেট হয়েছে!");
-    } catch (e) { alert("ব্যাজ দিতে সমস্যা হয়েছে।"); }
+      alert("Player badge updated!");
+    } catch (e) { alert("Error updating badge."); }
   };
 
   const updateUserRole = async (uid: string, role: UserRole) => {
     if (!isOwner) return; 
     try {
       await updateDoc(doc(db, 'users', uid), { role });
-      alert("ইউজার রোল আপডেট হয়েছে!");
-    } catch (e) { alert("রোল পরিবর্তন করতে সমস্যা হয়েছে।"); }
+      alert("User role updated!");
+    } catch (e) { alert("Error changing role."); }
   };
 
   const saveRoom = async () => {
@@ -141,7 +165,6 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
 
   return (
     <div className="py-12 px-4 md:px-8 max-w-7xl mx-auto min-h-screen animate-in fade-in duration-500">
-      {/* Admin Identity Header */}
       <div className="glass-card rounded-[48px] p-8 border-white/10 mb-12 flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 left-0 w-1 h-full bg-purple-600"></div>
         <div className="flex items-center space-x-6">
@@ -165,6 +188,7 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
         <div className="flex flex-wrap bg-white/5 p-1.5 rounded-2xl border border-white/10 gap-1.5 w-fit">
           <AdminTab active={activeTab === 'rooms'} onClick={() => setActiveTab('rooms')} icon={<Shield size={16}/>} label="Arenas" />
           <AdminTab active={activeTab === 'orders'} onClick={() => setActiveTab('orders')} icon={<CreditCard size={16}/>} label="Payments" />
+          <AdminTab active={activeTab === 'teams_approval'} onClick={() => setActiveTab('teams_approval')} icon={<UserPlus size={16}/>} label="Squad Approvals" />
           <AdminTab active={activeTab === 'badges'} onClick={() => setActiveTab('badges')} icon={<Star size={16}/>} label="Staff/Badges" />
         </div>
 
@@ -239,6 +263,50 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
                   <div className="py-20 text-center glass-card rounded-[32px] border border-dashed border-white/10">
                     <CreditCard size={48} className="mx-auto text-gray-600 opacity-20 mb-4" />
                     <p className="text-gray-500 font-black uppercase tracking-[0.3em] text-xs">No transactions recorded</p>
+                  </div>
+                )}
+             </div>
+          </div>
+        )}
+
+        {activeTab === 'teams_approval' && (
+          <div className="space-y-8 animate-in fade-in">
+             <div className="border-l-4 border-green-500 pl-6">
+                <h3 className="font-orbitron text-3xl font-black italic text-white uppercase">Squad Approvals</h3>
+                <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Review new team registrations</p>
+             </div>
+             <div className="grid grid-cols-1 gap-6">
+                {pendingTeams.length > 0 ? pendingTeams.map(team => (
+                  <div key={team.id} className="glass-card p-8 rounded-[40px] border-white/10 flex flex-col lg:flex-row items-center gap-8 hover:border-green-500/30 transition-all">
+                    <div className="w-24 h-24 rounded-[32px] border-2 border-white/10 overflow-hidden shrink-0">
+                       <img src={team.teamLogo || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" alt="Team Logo" />
+                    </div>
+                    <div className="flex-grow text-center lg:text-left">
+                       <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter">{team.teamName}</h4>
+                       <div className="flex flex-wrap justify-center lg:justify-start gap-4 mt-3">
+                          <div className="flex items-center gap-2">
+                             <UserCircle size={14} className="text-purple-400" />
+                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Captain: {team.captainName}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <Users size={14} className="text-blue-400" />
+                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Players: {[team.player2Name, team.player3Name, team.player4Name].filter(n => n).length + 1}</span>
+                          </div>
+                       </div>
+                    </div>
+                    <div className="flex gap-4">
+                       <button onClick={() => approveTeam(team)} className="px-10 py-5 bg-green-600 text-white rounded-[24px] font-black uppercase text-[10px] tracking-widest shadow-xl shadow-green-600/20 hover:scale-105 transition-all flex items-center gap-2">
+                          <Check size={18} /> Approve Squad
+                       </button>
+                       <button onClick={() => deleteTeam(team.id)} className="p-5 bg-red-600/10 text-red-500 border border-red-500/20 rounded-[24px] hover:bg-red-600 hover:text-white transition-all">
+                          <Trash2 size={20} />
+                       </button>
+                    </div>
+                  </div>
+                )) : (
+                  <div className="py-24 text-center glass-card rounded-[40px] border border-dashed border-white/10">
+                    <UserPlus size={48} className="mx-auto text-gray-600 opacity-20 mb-4" />
+                    <p className="text-gray-500 font-black uppercase tracking-[0.3em] text-xs italic">No pending squad requests</p>
                   </div>
                 )}
              </div>

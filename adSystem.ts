@@ -10,13 +10,18 @@ const AD_URL = "https://www.effectivegatecpm.com/fpn11b8pq5?key=2d72c821e1976e6e
 
 /**
  * লেভেল অনুযায়ী টার্গেট EXP রিটার্ন করে
+ * রিকোয়ারমেন্ট অনুযায়ী ডাইনামিক স্কেলিং
  */
 export const getRequiredExpForLevel = (level: number): number => {
   if (level === 1) return 100;
   if (level === 2) return 150;
   if (level === 3) return 300;
   if (level === 4) return 500;
-  return 1000; // লেভেল ৫ এর পর থেকে ১০০০ করে লাগবে
+  if (level === 5) return 800;  // লেভেল ৫ থেকে ৬ এ যেতে ৮০০
+  if (level === 6) return 1200; // লেভেল ৬ থেকে ৭ এ যেতে ১২০০
+  
+  // লেভেল ৭ এর পর থেকে প্রতি লেভেলে ৫০০ করে রিকোয়ারমেন্ট বাড়বে
+  return 1200 + (level - 6) * 500;
 };
 
 export interface AdStatus {

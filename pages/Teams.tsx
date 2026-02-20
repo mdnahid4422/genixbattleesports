@@ -198,73 +198,75 @@ const Teams: React.FC<TeamsProps> = ({ db: appDb }) => {
       )}
 
       {selectedTeam && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTeam(null)}></div>
-          <div className="relative w-full max-w-4xl glass-card rounded-[50px] border-white/10 shadow-2xl overflow-hidden animate-in zoom-in duration-300 max-h-[90vh] flex flex-col">
-            <div className="p-8 md:p-12 bg-gradient-to-r from-purple-600/20 via-transparent to-blue-600/20 border-b border-white/5 flex flex-col md:flex-row items-center gap-10 shrink-0">
-               <div className="w-40 h-40 rounded-[40px] border-4 border-purple-500/30 overflow-hidden shadow-[0_0_50px_rgba(147,51,234,0.2)] shrink-0">
-                  <img src={selectedTeam.teamLogo || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" alt="Logo" />
-               </div>
-               <div className="text-center md:text-left flex-grow">
-                  <div className="flex items-center justify-center md:justify-start space-x-3 mb-2">
-                     <h3 className="text-5xl font-black font-orbitron text-white uppercase italic tracking-tighter leading-none">{selectedTeam.teamName}</h3>
-                     <CheckCircle size={24} className="text-green-500" />
-                  </div>
-                  <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-4">
-                     <button 
-                       onClick={(e) => handleLike(e, selectedTeam.id, selectedTeam.likes)}
-                       className={`px-6 py-2.5 rounded-full text-[11px] font-black uppercase italic tracking-widest flex items-center space-x-2 transition-all ${currentUser && selectedTeam.likes?.includes(currentUser.uid) ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10'}`}
-                     >
-                        <Heart size={14} fill={currentUser && selectedTeam.likes?.includes(currentUser.uid) ? "currentColor" : "none"} />
-                        <span>{selectedTeam.likes?.length || 0} Likes</span>
-                     </button>
-                     <span className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-full text-[11px] text-gray-400 font-black uppercase italic tracking-widest">
-                        <Calendar size={14} className="inline mr-2 mb-0.5" /> Established {new Date(selectedTeam.registrationDate).toLocaleDateString()}
-                     </span>
-                  </div>
-               </div>
-               <button onClick={() => setSelectedTeam(null)} className="p-4 bg-white/5 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-all shrink-0"><X size={24}/></button>
-            </div>
+        <div className="fixed inset-0 z-[150] overflow-y-auto custom-scrollbar">
+          <div className="fixed inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedTeam(null)}></div>
+          <div className="relative min-h-screen flex items-start md:items-center justify-center p-4 pt-10 md:pt-4 pointer-events-none">
+            <div className="relative w-full max-w-4xl glass-card rounded-[40px] md:rounded-[50px] border-white/10 shadow-2xl overflow-hidden animate-in md:zoom-in slide-in-from-top duration-500 flex flex-col pointer-events-auto">
+              <div className="px-8 md:px-12 py-6 md:py-12 bg-gradient-to-r from-purple-600/20 via-transparent to-blue-600/20 border-b border-white/5 flex flex-col md:flex-row items-center gap-6 md:gap-10 shrink-0">
+                 <div className="w-28 h-28 md:w-40 md:h-40 rounded-[32px] md:rounded-[40px] border-4 border-purple-500/30 overflow-hidden shadow-[0_0_50px_rgba(147,51,234,0.2)] shrink-0">
+                    <img src={selectedTeam.teamLogo || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" alt="Logo" />
+                 </div>
+                 <div className="text-center md:text-left flex-grow">
+                    <div className="flex items-center justify-center md:justify-start space-x-3 mb-2">
+                       <h3 className="text-3xl md:text-5xl font-black font-orbitron text-white uppercase italic tracking-tighter leading-none">{selectedTeam.teamName}</h3>
+                       <CheckCircle size={24} className="text-green-500" />
+                    </div>
+                    <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-4">
+                       <button 
+                         onClick={(e) => handleLike(e, selectedTeam.id, selectedTeam.likes)}
+                         className={`px-6 py-2.5 rounded-full text-[11px] font-black uppercase italic tracking-widest flex items-center space-x-2 transition-all ${currentUser && selectedTeam.likes?.includes(currentUser.uid) ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10'}`}
+                       >
+                          <Heart size={14} fill={currentUser && selectedTeam.likes?.includes(currentUser.uid) ? "currentColor" : "none"} />
+                          <span>{selectedTeam.likes?.length || 0} Likes</span>
+                       </button>
+                       <span className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-full text-[11px] text-gray-400 font-black uppercase italic tracking-widest">
+                          <Calendar size={14} className="inline mr-2 mb-0.5" /> Established {new Date(selectedTeam.registrationDate).toLocaleDateString()}
+                       </span>
+                    </div>
+                 </div>
+                 <button onClick={() => setSelectedTeam(null)} className="absolute top-6 right-6 md:relative md:top-0 md:right-0 p-4 bg-white/5 hover:bg-white/10 rounded-full text-gray-500 hover:text-white transition-all shrink-0"><X size={24}/></button>
+              </div>
 
-            <div className="flex-grow overflow-y-auto p-8 md:p-12 custom-scrollbar">
-               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-16">
-                  <StatBox icon={<Zap className="text-purple-500" />} label="Combat Duty" value={getTeamStats(selectedTeam.teamName || '')?.matchesPlayed || 0} />
-                  <StatBox icon={<Target className="text-red-500" />} label="Eliminations" value={getTeamStats(selectedTeam.teamName || '')?.killPoints || 0} />
-                  <StatBox icon={<Trophy className="text-yellow-500" />} label="Hall of Fame Score" value={getTeamStats(selectedTeam.teamName || '')?.totalPoints || 0} highlight />
-               </div>
+              <div className="p-8 md:p-12 space-y-12">
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+                    <StatBox icon={<Zap className="text-purple-500" />} label="Combat Duty" value={getTeamStats(selectedTeam.teamName || '')?.matchesPlayed || 0} />
+                    <StatBox icon={<Target className="text-red-500" />} label="Eliminations" value={getTeamStats(selectedTeam.teamName || '')?.killPoints || 0} />
+                    <StatBox icon={<Trophy className="text-yellow-500" />} label="Hall of Fame Score" value={getTeamStats(selectedTeam.teamName || '')?.totalPoints || 0} highlight />
+                 </div>
 
-               <div className="space-y-8">
-                  <div className="flex items-center justify-between">
-                     <h4 className="text-xs font-black text-gray-500 uppercase tracking-[0.4em] border-l-4 border-purple-500 pl-4 italic">Active Operatives</h4>
-                     <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Click to view Full Profile</p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                     <PlayerProfileCard 
-                        role="Captain" 
-                        ign={selectedTeam.captainName} 
-                        account={selectedTeam.captainAccountName} 
-                        uid={selectedTeam.captainUid} 
-                        onClick={() => viewPlayerProfile(selectedTeam.captainUid)}
-                     />
-                     {['player2', 'player3', 'player4', 'player5'].map(key => {
-                        const name = (selectedTeam as any)[`${key}Name`];
-                        const acc = (selectedTeam as any)[`${key}AccountName`];
-                        const uid = (selectedTeam as any)[`${key}Uid`];
-                        if (!name) return null;
-                        return (
-                           <PlayerProfileCard 
-                              key={key}
-                              role={key === 'player5' ? 'P5 (Sub)' : `P${key.slice(-1)}`}
-                              ign={name} 
-                              account={acc} 
-                              uid={uid} 
-                              active={!!uid}
-                              onClick={() => uid && viewPlayerProfile(uid)}
-                           />
-                        );
-                     })}
-                  </div>
-               </div>
+                 <div className="space-y-8">
+                    <div className="flex items-center justify-between">
+                       <h4 className="text-xs font-black text-gray-500 uppercase tracking-[0.4em] border-l-4 border-purple-500 pl-4 italic">Active Operatives</h4>
+                       <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Click to view Full Profile</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                       <PlayerProfileCard 
+                          role="Captain" 
+                          ign={selectedTeam.captainName} 
+                          account={selectedTeam.captainAccountName} 
+                          uid={selectedTeam.captainUid} 
+                          onClick={() => viewPlayerProfile(selectedTeam.captainUid)}
+                       />
+                       {['player2', 'player3', 'player4', 'player5'].map(key => {
+                          const name = (selectedTeam as any)[`${key}Name`];
+                          const acc = (selectedTeam as any)[`${key}AccountName`];
+                          const uid = (selectedTeam as any)[`${key}Uid`];
+                          if (!name) return null;
+                          return (
+                             <PlayerProfileCard 
+                                key={key}
+                                role={key === 'player5' ? 'P5 (Sub)' : `P${key.slice(-1)}`}
+                                ign={name} 
+                                account={acc} 
+                                uid={uid} 
+                                active={!!uid}
+                                onClick={() => uid && viewPlayerProfile(uid)}
+                             />
+                          );
+                       })}
+                    </div>
+                 </div>
+              </div>
             </div>
           </div>
         </div>
