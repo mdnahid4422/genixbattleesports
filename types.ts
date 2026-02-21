@@ -96,29 +96,48 @@ export interface Order {
   timestamp: string;
 }
 
+export interface MemberChangeRequest {
+  id: string;
+  teamId: string;
+  teamName: string;
+  slotKey: string; // 'player2', 'player3', etc.
+  newName: string;
+  newUid: string;
+  newInGameUid: string;
+  newAccountName?: string;
+  timestamp: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
 export interface Team {
   id: string;
   teamName: string;
+  teamTag?: string;
   teamLogo?: string;
   teamEmail: string;
   captainFullName: string;
   captainName: string; 
   captainUid: string;
+  captainInGameUid: string;
   captainAccountName?: string; 
   player2Name?: string;
   player2Uid?: string;
+  player2InGameUid?: string;
   player2AccountName?: string;
   player2Position?: PlayerPosition;
   player3Name?: string;
   player3Uid?: string;
+  player3InGameUid?: string;
   player3AccountName?: string;
   player3Position?: PlayerPosition;
   player4Name?: string;
   player4Uid?: string;
+  player4InGameUid?: string;
   player4AccountName?: string;
   player4Position?: PlayerPosition;
   player5Name?: string;
   player5Uid?: string;
+  player5InGameUid?: string;
   player5AccountName?: string;
   player5Position?: PlayerPosition;
   phone: string;
@@ -126,6 +145,7 @@ export interface Team {
   isApproved: boolean; 
   userUid?: string; 
   likes?: string[];
+  pendingMembers?: { [key: string]: { name: string; uid: string; inGameUid: string; accountName?: string } };
 }
 
 export interface AppData {

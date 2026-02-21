@@ -73,6 +73,7 @@ export const INITIAL_DATA: AppData = {
       captainFullName: 'Zenith Prime',
       captainName: 'Zenith',
       captainUid: 'GX1001',
+      captainInGameUid: '12345678',
       player2Name: 'Nexus',
       player2Uid: 'GX1002',
       player3Name: 'Void',

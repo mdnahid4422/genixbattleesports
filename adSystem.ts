@@ -31,6 +31,19 @@ export interface AdStatus {
   message?: string;
 }
 
+export const addExp = (currentLevel: number, currentExp: number, totalExp: number, amount: number) => {
+  let newLevel = currentLevel;
+  let newExp = currentExp + amount;
+  let newTotalExp = totalExp + amount;
+
+  while (newExp >= getRequiredExpForLevel(newLevel)) {
+    newExp -= getRequiredExpForLevel(newLevel);
+    newLevel += 1;
+  }
+
+  return { level: newLevel, exp: newExp, totalExp: newTotalExp };
+};
+
 class AdSystem {
   private lastWatchTimestamp: number = 0;
 
@@ -83,23 +96,18 @@ class AdSystem {
               const userSnap = await getDoc(userRef);
               const userData = userSnap.data();
               
-              let currentLevel = userData?.level || 1;
-              let currentExp = (userData?.exp || 0) + AD_REWARD_EXP;
-              let totalExp = (userData?.totalExp || 0) + AD_REWARD_EXP;
+              const { level: currentLevel, exp: currentExp, totalExp } = addExp(
+                userData?.level || 1,
+                userData?.exp || 0,
+                userData?.totalExp || 0,
+                AD_REWARD_EXP
+              );
               
-              const requiredExp = getRequiredExpForLevel(currentLevel);
-
-              let leveledUp = false;
-              // Level up check
-              if (currentExp >= requiredExp) {
-                currentExp = 0; // লেভেল বাড়লে current exp রিসেট হয়ে ০ হবে
-                currentLevel += 1;
-                leveledUp = true;
-              }
+              const leveledUp = currentLevel > (userData?.level || 1);
 
               await updateDoc(userRef, {
                 exp: currentExp,
-                totalExp: totalExp, // টোটাল exp কখনোই রিসেট হবে না
+                totalExp: totalExp,
                 level: currentLevel,
                 dailyAdsCount: status.dailyCount + 1,
                 lastAdDate: today

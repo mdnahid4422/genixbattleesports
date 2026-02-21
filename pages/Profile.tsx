@@ -185,15 +185,13 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
                </button>
                <p className="text-gray-500 font-black uppercase tracking-[0.3em] text-[10px] italic flex items-center justify-center md:justify-start gap-2"><IdCard size={12} className="text-purple-500" /> #{profileData.uid.slice(0, 10).toUpperCase()}</p>
             </div>
-            {showScores && (
-              <div className="flex flex-wrap justify-center gap-4">
-                <StatPlate label="Elims" value={profileData.totalKills || 0} icon={<Target size={14}/>} color="from-red-600/20 to-red-900/20 text-red-400" border="border-red-500/30" />
-                <StatPlate label="Total EXP" value={profileData.totalExp || 0} icon={<Zap size={14}/>} color="from-yellow-600/20 to-yellow-900/20 text-yellow-400" border="border-yellow-500/30" />
-              </div>
-            )}
+            <div className="flex flex-wrap justify-center gap-4">
+              <StatPlate label="Elims" value={profileData.totalKills || 0} icon={<Target size={14}/>} color="from-red-600/20 to-red-900/20 text-red-400" border="border-red-500/30" />
+              <StatPlate label="Total EXP" value={profileData.totalExp || 0} icon={<Zap size={14}/>} color="from-yellow-600/20 to-yellow-900/20 text-yellow-400" border="border-yellow-500/30" />
+            </div>
             {!showScores && isOwnProfile && (
               <div className="flex items-center gap-2 text-gray-500 italic text-[10px] font-black uppercase bg-white/5 px-4 py-2 rounded-xl border border-white/5">
-                <EyeOff size={12} /> Scores Hidden for Others
+                <EyeOff size={12} /> Stats are now public
               </div>
             )}
           </div>
