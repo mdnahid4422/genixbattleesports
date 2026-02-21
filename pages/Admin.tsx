@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Shield, Trophy, Users, Target, Zap, Loader2, Save, Trash2, Edit3, X, Lock, UploadCloud, CreditCard, MessageSquare, AlertTriangle, Star, Search, CheckCircle2, UserCircle, UserPlus, Check } from 'lucide-react';
+import { LogOut, Shield, Trophy, Users, Target, Zap, Loader2, Save, Trash2, Edit3, X, Lock, UploadCloud, CreditCard, MessageSquare, AlertTriangle, Star, Search, CheckCircle2, UserCircle, UserPlus, Check, LayoutGrid, Settings, Camera, UserMinus } from 'lucide-react';
 import { auth, signOut, db, doc, setDoc, updateDoc, collection, onSnapshot, deleteDoc, query, where, getDocs, increment, getDoc } from '../firebase';
 import { AppData, Room, RoomStatus, Order, UserProfile, SpecialBadge, UserRole, Team, MatchResult } from '../types';
 import { addExp } from '../adSystem';
@@ -13,10 +13,12 @@ interface AdminProps {
 }
 
 const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'rooms' | 'points' | 'teams_approval' | 'orders' | 'badges' | 'member_requests'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'points' | 'teams_approval' | 'orders' | 'badges' | 'member_requests' | 'all_teams'>('rooms');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
+  const [isTeamEditModalOpen, setIsTeamEditModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [selectedRoomForResult, setSelectedRoomForResult] = useState<Room | null>(null);
   const [matchResults, setMatchResults] = useState<{ [teamName: string]: { position: number; playerKills: { [playerName: string]: number } } }>({});
   const [roomTeams, setRoomTeams] = useState<Team[]>([]);
@@ -24,9 +26,11 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
   const [roomFormData, setRoomFormData] = useState<Partial<Room>>({});
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingTeams, setPendingTeams] = useState<Team[]>([]);
+  const [allTeams, setAllTeams] = useState<Team[]>([]);
   const [memberRequests, setMemberRequests] = useState<any[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [teamSearch, setTeamSearch] = useState('');
   const [checkingAccess, setCheckingAccess] = useState(true);
   const navigate = useNavigate();
 
@@ -51,31 +55,67 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
   }, [currentUser, isAuthorized, navigate]);
 
   useEffect(() => {
-    if (isAuthorized) {
-      // Listen for orders
-      const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
-        setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
-      });
+    if (!isAuthorized) return;
 
-      // Listen for pending teams (isApproved: false)
-      const qPending = query(collection(db, 'registrations'), where('isApproved', '==', false));
-      const unsubPendingTeams = onSnapshot(qPending, (snap) => {
-        setPendingTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team)));
-      });
+    // Global listeners needed for basic stats or shared data
+    const unsubAllTeams = onSnapshot(collection(db, 'registrations'), (snap) => {
+      setAllTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team)));
+    }, (err) => console.warn("All teams listener warning:", err.message));
 
-      // Listen for all users
-      const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-        setAllUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
-      });
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setAllUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
+    }, (err) => console.warn("Users listener warning:", err.message));
 
-      // Listen for member requests
-      const unsubMemberReqs = onSnapshot(collection(db, 'member_requests'), (snap) => {
-        setMemberRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      });
-
-      return () => { unsubOrders(); unsubPendingTeams(); unsubUsers(); unsubMemberReqs(); };
-    }
+    return () => { unsubAllTeams(); unsubUsers(); };
   }, [isAuthorized]);
+
+  useEffect(() => {
+    if (!isAuthorized || activeTab !== 'orders') return;
+    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
+      setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
+    }, (err) => {
+      if (err.code === 'permission-denied') {
+        console.warn("Orders access denied.");
+      } else {
+        console.error("Orders listener error:", err);
+      }
+    });
+    return () => unsubOrders();
+  }, [isAuthorized, activeTab]);
+
+  useEffect(() => {
+    if (!isAuthorized || activeTab !== 'teams_approval') return;
+    const qPending = query(collection(db, 'registrations'), where('isApproved', '==', false));
+    const unsubPendingTeams = onSnapshot(qPending, (snap) => {
+      setPendingTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team)));
+    }, (err) => {
+      if (err.code === 'permission-denied') {
+        console.warn("Pending teams access denied.");
+      } else {
+        console.error("Pending teams listener error:", err);
+      }
+    });
+    return () => unsubPendingTeams();
+  }, [isAuthorized, activeTab]);
+
+  useEffect(() => {
+    if (!isAuthorized || activeTab !== 'member_requests') return;
+    // Only Owners and Admins can usually see member requests
+    if (!isOwner && !isAdmin) {
+      console.warn("Moderators may not have permission for member requests.");
+      return;
+    }
+    const unsubMemberReqs = onSnapshot(collection(db, 'member_requests'), (snap) => {
+      setMemberRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      if (err.code === 'permission-denied') {
+        console.warn("Member requests access denied. This usually means your role doesn't have Firestore permissions for this collection.");
+      } else {
+        console.error("Member requests listener error:", err);
+      }
+    });
+    return () => unsubMemberReqs();
+  }, [isAuthorized, activeTab, isOwner, isAdmin]);
 
   const handleLogout = () => signOut(auth);
 
@@ -388,6 +428,144 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
     }
   };
 
+  const updateTeamNameEverywhere = async (oldName: string, newName: string) => {
+    if (!oldName || oldName === newName) return;
+
+    try {
+      // 1. Update Points table
+      const updatedPoints = [...(appDb.points || [])].map(p => 
+        p.teamName === oldName ? { ...p, teamName: newName } : p
+      );
+
+      // 2. Update Rooms
+      const updatedRooms = [...(appDb.rooms || [])].map(r => ({
+        ...r,
+        teams: (r.teams || []).map(t => t === oldName ? newName : t),
+        results: (r.results || []).map(res => res.teamName === oldName ? { ...res, teamName: newName } : res)
+      }));
+
+      const sanitizedDb = JSON.parse(JSON.stringify({ 
+        ...appDb,
+        rooms: updatedRooms,
+        points: updatedPoints
+      }));
+      
+      setDb(sanitizedDb);
+      await setDoc(doc(db, 'app', 'global_data'), sanitizedDb);
+
+      // 3. Update Orders
+      const qOrders = query(collection(db, 'orders'), where('teamName', '==', oldName));
+      const orderSnap = await getDocs(qOrders);
+      for (const d of orderSnap.docs) {
+        await updateDoc(doc(db, 'orders', d.id), { teamName: newName });
+      }
+    } catch (e) {
+      console.error("Error updating team name everywhere:", e);
+    }
+  };
+
+  const saveTeamEdits = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeam) return;
+    setLoadingResults(true);
+    try {
+      const oldTeamSnap = await getDoc(doc(db, 'registrations', editingTeam.id));
+      const oldTeamData = oldTeamSnap.data() as Team;
+      const oldName = oldTeamData.teamName;
+      const newName = editingTeam.teamName;
+
+      // Sync Website Account Names to User Profiles if Admin changed them
+      const syncPromises = [];
+      
+      // Captain
+      if (editingTeam.captainUid && editingTeam.captainAccountName !== oldTeamData.captainAccountName) {
+        syncPromises.push(updateDoc(doc(db, 'users', editingTeam.captainUid), { fullName: editingTeam.captainAccountName }));
+      }
+      
+      // Players 2-5
+      for (let i = 2; i <= 5; i++) {
+        const uid = (editingTeam as any)[`player${i}Uid`];
+        const newAccName = (editingTeam as any)[`player${i}AccountName`];
+        const oldAccName = (oldTeamData as any)[`player${i}AccountName`];
+        
+        if (uid && newAccName && newAccName !== oldAccName) {
+          syncPromises.push(updateDoc(doc(db, 'users', uid), { fullName: newAccName }));
+        }
+      }
+
+      await Promise.all(syncPromises);
+      await setDoc(doc(db, 'registrations', editingTeam.id), editingTeam);
+      
+      if (oldName !== newName) {
+        await updateTeamNameEverywhere(oldName, newName);
+      }
+
+      setIsTeamEditModalOpen(false);
+      alert("Team updated successfully!");
+    } catch (err) {
+      console.error("Error saving team:", err);
+      alert("Error saving team.");
+    } finally {
+      setLoadingResults(false);
+    }
+  };
+
+  const handleKickPlayerAdmin = async (slotNum: number) => {
+    if (!editingTeam) return;
+    const playerUid = (editingTeam as any)[`player${slotNum}Uid`];
+    const playerName = (editingTeam as any)[`player${slotNum}Name`];
+
+    if (!window.confirm(`Remove ${playerName} from squad?`)) return;
+
+    try {
+      const updatedTeam = { 
+        ...editingTeam, 
+        [`player${slotNum}Name`]: '',
+        [`player${slotNum}Uid`]: '',
+        [`player${slotNum}InGameUid`]: '',
+        [`player${slotNum}AccountName`]: '' 
+      };
+      setEditingTeam(updatedTeam);
+
+      if (playerUid) {
+        await updateDoc(doc(db, 'users', playerUid), { 
+          position: null, 
+          teamId: null 
+        });
+        await deleteDoc(doc(db, 'users_membership', playerUid)).catch(() => {});
+      }
+    } catch (err) {
+      alert("Failed to kick.");
+    }
+  };
+
+  const handleDisconnectIdAdmin = async (slotNum: number) => {
+    if (!editingTeam) return;
+    const playerUid = (editingTeam as any)[`player${slotNum}Uid`];
+    const playerName = (editingTeam as any)[`player${slotNum}Name`];
+
+    if (!window.confirm(`Disconnect ID for ${playerName}?`)) return;
+
+    try {
+      const updatedTeam = { 
+        ...editingTeam, 
+        [`player${slotNum}Uid`]: '',
+        [`player${slotNum}AccountName`]: '' 
+      };
+      setEditingTeam(updatedTeam);
+
+      if (playerUid) {
+        await updateDoc(doc(db, 'users', playerUid), { 
+          position: null, 
+          teamId: null 
+        });
+        await deleteDoc(doc(db, 'users_membership', playerUid)).catch(() => {});
+      }
+    } catch (err) {
+      alert("Failed to disconnect.");
+    }
+  };
+
   return (
     <div className="py-12 px-4 md:px-8 max-w-7xl mx-auto min-h-screen animate-in fade-in duration-500">
       <div className="glass-card rounded-[48px] p-8 border-white/10 mb-12 flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl relative overflow-hidden">
@@ -415,7 +593,10 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
           <AdminTab active={activeTab === 'points'} onClick={() => setActiveTab('points')} icon={<Trophy size={16}/>} label="Points Entry" />
           <AdminTab active={activeTab === 'orders'} onClick={() => setActiveTab('orders')} icon={<CreditCard size={16}/>} label="Payments" />
           <AdminTab active={activeTab === 'teams_approval'} onClick={() => setActiveTab('teams_approval')} icon={<UserPlus size={16}/>} label="Squad Approvals" />
-          <AdminTab active={activeTab === 'member_requests'} onClick={() => setActiveTab('member_requests')} icon={<Users size={16}/>} label="Member Changes" />
+          {(isOwner || isAdmin) && (
+            <AdminTab active={activeTab === 'member_requests'} onClick={() => setActiveTab('member_requests')} icon={<Users size={16}/>} label="Member Changes" />
+          )}
+          <AdminTab active={activeTab === 'all_teams'} onClick={() => setActiveTab('all_teams')} icon={<LayoutGrid size={16}/>} label="Teams" />
           <AdminTab active={activeTab === 'badges'} onClick={() => setActiveTab('badges')} icon={<Star size={16}/>} label="Staff/Badges" />
         </div>
 
@@ -616,6 +797,37 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
           </div>
         )}
 
+        {activeTab === 'all_teams' && (
+          <div className="space-y-8 animate-in fade-in">
+             <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-l-4 border-purple-500 pl-6">
+                <div>
+                  <h3 className="font-orbitron text-3xl font-black italic text-white uppercase tracking-tighter">Squad Database</h3>
+                  <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Manage all registered teams</p>
+                </div>
+                <div className="relative w-full md:w-80">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={16}/>
+                  <input type="text" placeholder="Search Squad..." value={teamSearch} onChange={e => setTeamSearch(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white text-xs font-bold outline-none focus:border-purple-500 transition-all shadow-inner" />
+                </div>
+             </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {allTeams.filter(t => (t.teamName || '').toLowerCase().includes(teamSearch.toLowerCase())).map(team => (
+                  <div key={team.id} className="glass-card p-6 rounded-[32px] border-white/10 hover:border-purple-500/30 transition-all flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                       <img src={team.teamLogo || 'https://via.placeholder.com/150'} className="w-14 h-14 rounded-2xl object-cover border border-white/10" />
+                       <div>
+                          <h4 className="text-sm font-black text-white italic uppercase tracking-tight">{team.teamName}</h4>
+                          <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">{team.isApproved ? 'Verified' : 'Pending'}</p>
+                       </div>
+                    </div>
+                    <button onClick={() => { setEditingTeam(team); setIsTeamEditModalOpen(true); }} className="p-3 bg-white/5 hover:bg-purple-600 hover:text-white rounded-xl text-gray-400 transition-all">
+                       <Settings size={16} />
+                    </button>
+                  </div>
+                ))}
+             </div>
+          </div>
+        )}
+
         {activeTab === 'badges' && (
           <div className="space-y-8 animate-in fade-in">
              <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-l-4 border-blue-500 pl-6">
@@ -722,6 +934,81 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
           </div>
         </div>
       )}
+      {isTeamEditModalOpen && editingTeam && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+           <div className="fixed inset-0 bg-black/90 backdrop-blur-sm" onClick={() => setIsTeamEditModalOpen(false)}></div>
+           <div className="relative w-full max-w-4xl glass-card rounded-[40px] border-white/10 shadow-2xl overflow-hidden animate-in zoom-in duration-300">
+              <div className="p-8 md:p-12 bg-gradient-to-r from-purple-600/20 to-blue-600/20 border-b border-white/10 flex justify-between items-center">
+                 <div className="flex items-center gap-6">
+                    <img src={editingTeam.teamLogo || 'https://via.placeholder.com/150'} className="w-20 h-20 rounded-2xl object-cover border-2 border-purple-500/30" />
+                    <div>
+                       <h3 className="font-orbitron text-3xl font-black italic text-white uppercase tracking-tighter">Edit Squad</h3>
+                       <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mt-1">Full Administrative Control</p>
+                    </div>
+                 </div>
+                 <button onClick={() => setIsTeamEditModalOpen(false)} className="p-4 bg-white/5 rounded-full text-gray-500 hover:text-white transition-all"><X size={24}/></button>
+              </div>
+              
+              <form onSubmit={saveTeamEdits} className="p-8 md:p-12 space-y-10 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <AdminInput label="Squad Name" value={editingTeam.teamName} onChange={(v: string) => setEditingTeam({...editingTeam, teamName: v})} />
+                    <AdminInput label="Team Tag" value={editingTeam.teamTag || ''} onChange={(v: string) => setEditingTeam({...editingTeam, teamTag: v})} />
+                    <AdminInput label="Phone" value={editingTeam.phone} onChange={(v: string) => setEditingTeam({...editingTeam, phone: v})} />
+                    <AdminInput label="Email" value={editingTeam.teamEmail} onChange={(v: string) => setEditingTeam({...editingTeam, teamEmail: v})} />
+                 </div>
+
+                 <div className="space-y-6">
+                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest border-l-4 border-blue-500 pl-4 italic">Roster Control</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                       {/* Captain */}
+                       <div className="p-6 bg-purple-600/5 rounded-3xl border border-purple-500/20 space-y-4">
+                          <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest italic">P1 | Captain</p>
+                          <AdminInput label="IGN" value={editingTeam.captainName} onChange={(v: string) => setEditingTeam({...editingTeam, captainName: v})} />
+                          <div className="grid grid-cols-2 gap-4">
+                             <AdminInput label="Game UID" value={editingTeam.captainInGameUid} onChange={(v: string) => setEditingTeam({...editingTeam, captainInGameUid: v})} />
+                             <AdminInput label="Website Account Name" value={editingTeam.captainAccountName || ''} onChange={(v: string) => setEditingTeam({...editingTeam, captainAccountName: v})} />
+                          </div>
+                       </div>
+
+                       {/* Players 2-5 */}
+                       {[2, 3, 4, 5].map(num => {
+                         const name = (editingTeam as any)[`player${num}Name`];
+                         const uid = (editingTeam as any)[`player${num}Uid`];
+                         const igUid = (editingTeam as any)[`player${num}InGameUid`];
+                         const accName = (editingTeam as any)[`player${num}AccountName`];
+                         const isSlotTaken = !!name;
+
+                         return (
+                           <div key={num} className={`p-6 rounded-3xl border space-y-4 ${isSlotTaken ? 'bg-white/5 border-white/10' : 'bg-black/20 border-white/5 opacity-50'}`}>
+                              <div className="flex justify-between items-center">
+                                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest italic">P{num} | Operative</p>
+                                 <div className="flex gap-2">
+                                    {uid && (
+                                      <button type="button" onClick={() => handleDisconnectIdAdmin(num)} className="p-2 bg-yellow-600/20 text-yellow-500 rounded-lg hover:bg-yellow-600 hover:text-white transition-all"><Zap size={12}/></button>
+                                    )}
+                                    {isSlotTaken && (
+                                      <button type="button" onClick={() => handleKickPlayerAdmin(num)} className="p-2 bg-red-600/20 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all"><UserMinus size={12}/></button>
+                                    )}
+                                 </div>
+                              </div>
+                              <AdminInput label="IGN" value={name || ''} onChange={(v: string) => setEditingTeam({...editingTeam, [`player${num}Name`]: v})} />
+                              <div className="grid grid-cols-2 gap-4">
+                                 <AdminInput label="Game UID" value={igUid || ''} onChange={(v: string) => setEditingTeam({...editingTeam, [`player${num}InGameUid`]: v})} />
+                                 <AdminInput label="Website Account Name" value={accName || ''} onChange={(v: string) => setEditingTeam({...editingTeam, [`player${num}AccountName`]: v})} />
+                              </div>
+                           </div>
+                         );
+                       })}
+                    </div>
+                 </div>
+
+                 <button type="submit" disabled={loadingResults} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-purple-600/30 hover:bg-purple-700 transition-all flex items-center justify-center gap-3 italic">
+                    {loadingResults ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20}/> Save All Changes</>}
+                 </button>
+              </form>
+           </div>
+        </div>
+      )}
       {isResultModalOpen && selectedRoomForResult && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setIsResultModalOpen(false)}></div>
@@ -808,7 +1095,13 @@ const Admin: React.FC<AdminProps> = ({ db: appDb, setDb, currentUser }) => {
 const AdminInput = ({ label, value, onChange, type = "text", placeholder }: any) => (
   <div className="space-y-2">
     <label className="text-[10px] font-black text-gray-500 uppercase ml-2 tracking-widest">{label}</label>
-    <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-bold focus:border-purple-500 outline-none transition-all shadow-inner" />
+    <input 
+      type={type} 
+      value={value || ''} 
+      onChange={e => onChange(e.target.value)} 
+      placeholder={placeholder} 
+      className="w-full bg-black/50 border border-white/10 rounded-2xl p-4 text-white text-xs font-bold focus:border-purple-500 outline-none transition-all shadow-inner" 
+    />
   </div>
 );
 

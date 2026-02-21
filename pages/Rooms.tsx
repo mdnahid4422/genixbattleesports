@@ -200,8 +200,10 @@ const Rooms: React.FC<RoomsProps> = ({ db: appDb }) => {
                    <p className="text-3xl font-black tracking-widest">{getMethodDetails(selectedMethod).num}</p>
                 </div>
                 <div className="space-y-4 text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> আপনার {selectedMethod} অ্যাপটি ওপেন করুন</p>
-                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> এই নাম্বারে ঠিক ৳{selectedRoom.entryFee} টাকা Send Money করুন</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> 1️⃣ টুর্নামেন্ট ফি শুধুমাত্র {selectedMethod} এর মাধ্যমে আমাদের দেওয়া নাম্বারে Send Money করতে হবে।
+অন্য কোনো মাধ্যমে টাকা পাঠালে তা গ্রহণযোগ্য হবে না।</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> 01568767731 নাম্বারে ঠিক ৳{selectedRoom.entryFee} টাকা Send Money করুন</p>
+                  <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> যে নাম্বার থেকে টাকা পাঠিয়েছেন সেটি নিচের বক্সে দিন</p>
                   <p className="flex items-center"><ChevronRight size={10} className="mr-2 text-purple-500"/> ট্রানজেকশন আইডি কপি করে নিচের বক্সে দিন</p>
                 </div>
                 <div className="space-y-4">

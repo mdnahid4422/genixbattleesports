@@ -327,13 +327,36 @@ const Profile: React.FC<ProfileProps> = ({ user: loggedInUser }) => {
                 <button 
                   onClick={async () => { 
                     setLoading(true); 
-                    await updateDoc(doc(db, 'users', profileData.uid), { 
-                      fullName: editName, 
-                      bio: editBio, 
-                      photoURL: editPhoto,
-                      hideBadges: hideBadges,
-                      hideScores: hideScores
-                    }); 
+                    try {
+                      await updateDoc(doc(db, 'users', profileData.uid), { 
+                        fullName: editName, 
+                        bio: editBio, 
+                        photoURL: editPhoto,
+                        hideBadges: hideBadges,
+                        hideScores: hideScores
+                      }); 
+
+                      // Sync name to team document if user is in a team
+                      if (profileData.teamId) {
+                        const teamSnap = await getDoc(doc(db, 'registrations', profileData.teamId));
+                        if (teamSnap.exists()) {
+                          const team = teamSnap.data() as Team;
+                          const updates: any = {};
+                          
+                          if (team.captainUid === profileData.uid) updates.captainAccountName = editName;
+                          if (team.player2Uid === profileData.uid) updates.player2AccountName = editName;
+                          if (team.player3Uid === profileData.uid) updates.player3AccountName = editName;
+                          if (team.player4Uid === profileData.uid) updates.player4AccountName = editName;
+                          if (team.player5Uid === profileData.uid) updates.player5AccountName = editName;
+                          
+                          if (Object.keys(updates).length > 0) {
+                            await updateDoc(doc(db, 'registrations', profileData.teamId), updates);
+                          }
+                        }
+                      }
+                    } catch (err) {
+                      console.error("Error updating profile:", err);
+                    }
                     setLoading(false); 
                     setIsEditModalOpen(false); 
                   }} 

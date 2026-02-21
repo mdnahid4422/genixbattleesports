@@ -44,10 +44,20 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
           if (regDoc.exists()) {
             const data = regDoc.data() as Team;
             setUserRegistration(data);
-            setFormData(data as any);
+            setFormData(prev => ({ ...prev, ...data }));
             setViewState('view_team');
+            onSnapshot(doc(db, `registrations/${user.uid}/requests`, 'dummy'), {
+              next: () => {},
+              error: () => {}
+            }); // Just a placeholder to show we handle errors
             onSnapshot(collection(db, `registrations/${user.uid}/requests`), (snapshot) => {
               setJoinRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            }, (err) => {
+              if (err.code === 'permission-denied') {
+                console.warn("Join requests access denied.");
+              } else {
+                console.error("Join requests listener error:", err);
+              }
             });
           }
         } catch (e) {}
@@ -62,6 +72,13 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
   useEffect(() => {
     const unsubTeams = onSnapshot(collection(db, 'registrations'), (snapshot) => {
       setAllTeams(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setIsTeamsLoading(false);
+    }, (err) => {
+      if (err.code === 'permission-denied') {
+        console.warn("Teams access denied.");
+      } else {
+        console.error("Teams listener error:", err);
+      }
       setIsTeamsLoading(false);
     });
     return () => unsubTeams();
@@ -252,13 +269,6 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
       setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'registrations'), (snap) => {
-      setAllTeams(snap.docs.map(d => ({ id: d.id, ...d.data() } as Team)));
-    });
-    return () => unsub();
-  }, []);
 
   const handleRequestToJoin = async (team: Team, slotNum: number) => {
     if (!currentUser) {
@@ -587,11 +597,11 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
                            placeholder={userRegistration?.isApproved ? "UID Locked" : "Enter Game UID"}
                         />
                         <InputGroup 
-                           label="Account ID" 
-                           value={formData.captainUid} 
-                           onChange={(v: string) => setFormData({...formData, captainUid: v})} 
+                           label="Website Account Name" 
+                           value={formData.captainAccountName || ''} 
+                           onChange={(v: string) => setFormData({...formData, captainAccountName: v})} 
                            disabled
-                           placeholder="Website Account ID"
+                           placeholder="Website Account Name"
                         />
                      </div>
                   </div>
@@ -643,11 +653,11 @@ const Registration: React.FC<RegistrationProps> = ({ db: appDb, setDb }) => {
                                 placeholder={userRegistration?.isApproved ? "UID Locked" : "Enter Game UID"}
                               />
                               <InputGroup 
-                                label="Account ID" 
-                                value={(formData as any)[`player${num}Uid`]} 
-                                onChange={(v: string) => setFormData({...formData, [`player${num}Uid`]: v})} 
+                                label="Website Account Name" 
+                                value={(formData as any)[`player${num}AccountName`] || ''} 
+                                onChange={(v: string) => setFormData({...formData, [`player${num}AccountName`]: v})} 
                                 disabled
-                                placeholder="Website Account ID"
+                                placeholder="Website Account Name"
                               />
                             </div>
                           </>
